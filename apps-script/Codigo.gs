@@ -457,8 +457,8 @@ function limparDuplicados() {
 
 /** Corrige o nome de um funcionário em todo lugar: Pede Aí (Funcionarios e Pedidos) e Documentos (Matriculas, Leituras, Avisos).
  *  Preencha os dois nomes abaixo e rode "corrigirNome". */
-const NOME_ANTIGO = 'Antthony';
-const NOME_NOVO = 'Anthony';
+const NOME_ANTIGO = 'Abraâo';
+const NOME_NOVO = 'Abraão';
 function corrigirNome() {
   const de = NOME_ANTIGO.trim(), para = NOME_NOVO.trim();
   if (!de || !para) throw new Error('Preencha NOME_ANTIGO e NOME_NOVO');
