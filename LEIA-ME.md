@@ -35,7 +35,7 @@ Endereços:
 ## 2. Todo mês: enviar os contra-cheques
 
 1. Abra a **Administração** e digite o PIN.
-2. **Enviar documentos** → escolha o PDF que veio da contabilidade.
+2. Aba **🧾 Holerites** → escolha o PDF que veio da contabilidade. Dá para escolher **vários meses de uma vez** (segure Ctrl): cada arquivo aparece num quadro com a sua competência, e um botão envia tudo.
 3. O site lê o PDF **no próprio navegador** e mostra uma linha por página com matrícula e nome. Confira:
    - **Competência** (já vem do PDF) e **Tipo** (Holerite, Adiantamento, 13º salário, Recibo de férias…).
    - **Funcionário (Pede Aí)**: no primeiro mês, escolha quem é quem nas linhas em laranja. A ligação **matrícula → funcionário** fica salva, então nos meses seguintes já vem tudo preenchido.

@@ -20,15 +20,14 @@
 <script src="../lib/pdf.min.js"></script>
 <script src="../lib/pdf-lib.min.js"></script>
 <script src="../lib/qrcode.js"></script>
-<script src="../comum.js?v=3"></script>
+<script src="../comum.js?v=4"></script>
 <script>
 const { post, esc, competencia, dataBR, base64DeBytes, pdfjs, aviso } = App;
 const $ = s => document.querySelector(s);
 const tela = $('#tela');
 let token = null, dados = null, aba = 'enviar';
-let lote = null;   // { arquivo, bytes, nomeArquivo, competencia, tipo, paginas:[{pag, matricula, nomeDoc, funcionario, enviar}] }
 
-$('#btnSair').onclick = () => { token = null; dados = null; lote = null; telaPin(); };
+$('#btnSair').onclick = () => { token = null; dados = null; lotes = []; telaPin(); };
 const fechar = () => $('#modal').innerHTML = '';
 const APP_URL = window.APP_URL || new URL('../', location.href).href;
 const matN = m => String(m || '').trim().replace(/^0+(?=\d)/, '');
@@ -159,95 +158,115 @@ async function lerPdf(arquivo) {
   return { nomeArquivo: arquivo.name, bytes, competencia: comp, tipo: tipo || 'Holerite', paginas };
 }
 
-// ---------- aba Enviar ----------
+// ---------- aba Holerites (um ou vários PDFs de uma vez) ----------
+let lotes = [];   // um por arquivo
 function telaEnviar() {
   const c = $('#conteudo');
-  if (!lote) {
-    c.innerHTML = `<label class="arquivo" id="caixa"><input type="file" id="arq" accept="application/pdf,.pdf">
-        <div style="font-size:34px">📄</div><b>Escolher o PDF da contabilidade</b>
-        <div class="meta">O arquivo é lido aqui no navegador e separado por funcionário, uma página para cada um.</div></label>
+  if (!lotes.length) {
+    c.innerHTML = `<label class="arquivo" id="caixa"><input type="file" id="arq" accept="application/pdf,.pdf" multiple>
+        <div style="font-size:34px">📄</div><b>Escolher o(s) PDF(s) da contabilidade</b>
+        <div class="meta">Pode escolher vários meses de uma vez (segure Ctrl). Cada arquivo é lido aqui no navegador e separado por funcionário.</div></label>
       <p class="meta">Funcionário novo? Cadastre primeiro na aba <b>Funcionarios</b> da planilha do Pede Aí, com a senha de 4 números.</p>`;
     $('#arq').onchange = async e => {
-      const f = e.target.files[0]; if (!f) return;
-      c.innerHTML = '<div class="carregando">Lendo o PDF…</div>';
-      try { lote = await lerPdf(f); } catch (err) { aviso('Não consegui ler o PDF: ' + err.message, true); lote = null; }
+      const fs = [...e.target.files]; if (!fs.length) return;
+      const l = [];
+      for (let k = 0; k < fs.length; k++) {
+        c.innerHTML = `<div class="carregando">Lendo ${k + 1} de ${fs.length}: ${esc(fs[k].name)}…</div>`;
+        try { l.push(await lerPdf(fs[k])); } catch (err) { aviso('Não consegui ler ' + fs[k].name + ': ' + err.message, true); }
+      }
+      lotes = l.sort((a, b) => (a.competencia + a.tipo).localeCompare(b.competencia + b.tipo));
       telaEnviar();
     };
     return;
   }
   const opcoes = sel => '<option value="">— escolher —</option>' + dados.funcionarios.map(f => `<option${f === sel ? ' selected' : ''}>${esc(f)}</option>`).join('');
-  const jaExiste = p => dados.documentos.some(d => d.competencia === lote.competencia && d.tipo === lote.tipo && d.matricula === matN(p.matricula));
-  c.innerHTML = `<div class="cartao">
-      <div><b>${esc(lote.nomeArquivo)}</b> · ${lote.paginas.length} página(s)</div>
+  const jaExiste = (L, p) => dados.documentos.some(d => d.competencia === L.competencia && d.tipo === L.tipo && d.matricula === matN(p.matricula));
+  const chave = L => L.competencia + '|' + L.tipo;
+  const repetidos = new Set(lotes.map(chave).filter((k, i, a) => a.indexOf(k) !== i));
+  c.innerHTML = lotes.map((L, li) => {
+    const ok = L.paginas.filter(p => p.enviar).length, falta = L.paginas.filter(p => !p.funcionario || !p.matricula).length;
+    const subst = L.paginas.filter(p => p.enviar && jaExiste(L, p)).length;
+    return `<div class="cartao">
+      <div style="display:flex;gap:10px;align-items:flex-start"><div style="flex:1"><b>${esc(L.nomeArquivo)}</b> · ${L.paginas.length} página(s)
+        <div class="meta"><span class="ok">${ok} para enviar</span>${falta ? ` · <span style="color:var(--acento)">${falta} sem funcionário</span>` : ''}${subst ? ` · ${subst} substituem envio anterior` : ''}</div>
+        ${repetidos.has(chave(L)) ? '<div style="color:var(--perigo);font-weight:600">⚠ Outro arquivo tem a mesma competência e tipo. Confira.</div>' : ''}</div>
+        ${lotes.length > 1 ? `<button class="mini perigo" data-tira="${li}">Tirar</button>` : ''}</div>
       <div class="linha2">
-        <div><label class="campo">Competência</label><input type="month" id="comp" value="${esc(lote.competencia)}"></div>
-        <div><label class="campo">Tipo de documento</label><input id="tipo" list="tipos" value="${esc(lote.tipo)}">
-          <datalist id="tipos">${TIPOS.map(t => `<option value="${esc(t)}">`).join('')}</datalist></div>
-      </div></div>
-    <div class="cartao tabela-rolagem"><table>
-      <thead><tr><th></th><th>Pág.</th><th>Matrícula</th><th>Nome no documento</th><th>Funcionário (Pede Aí)</th><th></th></tr></thead>
-      <tbody>${lote.paginas.map((p, i) => `<tr class="${p.matricula && p.funcionario ? '' : 'falta'}">
-        <td><input type="checkbox" data-i="${i}" class="chk" ${p.enviar ? 'checked' : ''} style="width:auto"></td>
-        <td>${p.pag}</td>
-        <td><input data-i="${i}" class="mat" value="${esc(p.matricula)}" style="width:90px" placeholder="?"></td>
-        <td>${esc(p.nomeDoc) || '<span class="nao">não identificado</span>'}</td>
-        <td><select data-i="${i}" class="func">${opcoes(p.funcionario)}</select></td>
-        <td>${jaExiste(p) ? '<span class="meta" title="Já existe; o arquivo será trocado">substitui</span>' : ''}</td></tr>`).join('')}</tbody>
-    </table></div>
+        <div><label class="campo">Competência</label><input type="month" class="comp" data-l="${li}" value="${esc(L.competencia)}"></div>
+        <div><label class="campo">Tipo de documento</label><input class="tipo" data-l="${li}" list="tipos" value="${esc(L.tipo)}"></div>
+      </div>
+      <details ${lotes.length === 1 || falta ? 'open' : ''}><summary>Ver páginas</summary><div class="tabela-rolagem"><table>
+        <thead><tr><th></th><th>Pág.</th><th>Matrícula</th><th>Nome no documento</th><th>Funcionário (Pede Aí)</th><th></th></tr></thead>
+        <tbody>${L.paginas.map((p, i) => `<tr class="${p.matricula && p.funcionario ? '' : 'falta'}">
+          <td><input type="checkbox" data-l="${li}" data-i="${i}" class="chk" ${p.enviar ? 'checked' : ''} style="width:auto"></td>
+          <td>${p.pag}</td>
+          <td><input data-l="${li}" data-i="${i}" class="mat" value="${esc(p.matricula)}" style="width:90px" placeholder="?"></td>
+          <td>${esc(p.nomeDoc) || '<span class="nao">não identificado</span>'}</td>
+          <td><select data-l="${li}" data-i="${i}" class="func">${opcoes(p.funcionario)}</select></td>
+          <td>${jaExiste(L, p) ? '<span class="meta">substitui</span>' : ''}</td></tr>`).join('')}</tbody>
+      </table></div></details></div>`;
+  }).join('') + `<datalist id="tipos">${TIPOS.map(t => `<option value="${esc(t)}">`).join('')}</datalist>
     <div class="meta" id="resumo"></div>
     <div class="progresso" id="prog" hidden><div></div></div>
     <div class="acoes"><button class="btn btn-claro" id="cancelar">Cancelar</button><button class="btn btn-ok" id="enviar"></button></div>`;
 
-  const resumo = () => {
-    const n = lote.paginas.filter(p => p.enviar).length;
-    const faltam = lote.paginas.filter(p => !p.funcionario || !p.matricula).length;
-    $('#enviar').textContent = `Enviar ${n} documento(s)`;
-    $('#enviar').disabled = !n;
-    $('#resumo').textContent = faltam ? `${faltam} página(s) sem funcionário escolhido (linhas em laranja) não serão enviadas.` : '';
-  };
-  $('#comp').onchange = e => { lote.competencia = e.target.value; telaEnviar(); };
-  $('#tipo').onchange = e => { lote.tipo = e.target.value.trim(); telaEnviar(); };
-  c.querySelectorAll('.chk').forEach(x => x.onchange = () => { const p = lote.paginas[x.dataset.i]; p.enviar = x.checked && !!p.funcionario && !!p.matricula; x.checked = p.enviar; resumo(); });
-  c.querySelectorAll('.func').forEach(x => x.onchange = () => { const p = lote.paginas[x.dataset.i]; p.funcionario = x.value; p.enviar = !!(p.funcionario && p.matricula); telaEnviar(); });
-  c.querySelectorAll('.mat').forEach(x => x.onchange = () => { const p = lote.paginas[x.dataset.i]; p.matricula = x.value.trim(); if (!p.funcionario) p.funcionario = sugerir(p.matricula, p.nomeDoc); p.enviar = !!(p.funcionario && p.matricula); telaEnviar(); });
-  $('#cancelar').onclick = () => { lote = null; telaEnviar(); };
-  $('#enviar').onclick = enviarLote;
-  resumo();
+  const total = lotes.reduce((s, L) => s + L.paginas.filter(p => p.enviar).length, 0);
+  const faltam = lotes.reduce((s, L) => s + L.paginas.filter(p => !p.funcionario || !p.matricula).length, 0);
+  $('#enviar').textContent = lotes.length > 1 ? `Enviar ${total} documento(s) de ${lotes.length} arquivos` : `Enviar ${total} documento(s)`;
+  $('#enviar').disabled = !total;
+  $('#resumo').textContent = faltam ? `${faltam} página(s) sem funcionário escolhido (linhas em laranja) não serão enviadas.` : '';
+  const P = x => lotes[x.dataset.l].paginas[x.dataset.i];
+  c.querySelectorAll('.comp').forEach(x => x.onchange = () => { lotes[x.dataset.l].competencia = x.value; telaEnviar(); });
+  c.querySelectorAll('.tipo').forEach(x => x.onchange = () => { lotes[x.dataset.l].tipo = x.value.trim(); telaEnviar(); });
+  c.querySelectorAll('.chk').forEach(x => x.onchange = () => { const p = P(x); p.enviar = x.checked && !!p.funcionario && !!p.matricula; telaEnviar(); });
+  c.querySelectorAll('.func').forEach(x => x.onchange = () => { const p = P(x); p.funcionario = x.value; p.enviar = !!(p.funcionario && p.matricula); telaEnviar(); });
+  c.querySelectorAll('.mat').forEach(x => x.onchange = () => { const p = P(x); p.matricula = x.value.trim(); if (!p.funcionario) p.funcionario = sugerir(p.matricula, p.nomeDoc); p.enviar = !!(p.funcionario && p.matricula); telaEnviar(); });
+  c.querySelectorAll('[data-tira]').forEach(b => b.onclick = () => { lotes.splice(+b.dataset.tira, 1); telaEnviar(); });
+  $('#cancelar').onclick = () => { lotes = []; telaEnviar(); };
+  $('#enviar').onclick = enviarLotes;
 }
 
-async function enviarLote() {
-  const lista = lote.paginas.filter(p => p.enviar);
-  if (!/^\d{4}-\d{2}$/.test(lote.competencia)) return aviso('Confira a competência', true);
-  if (!lote.tipo) return aviso('Informe o tipo de documento', true);
-  const repetido = lista.map(p => matN(p.matricula)).find((m, i, a) => a.indexOf(m) !== i);
-  if (repetido) return aviso('A matrícula ' + repetido + ' aparece em mais de uma página marcada.', true);
-  if (!confirm(`Enviar ${lista.length} documento(s) de ${competencia(lote.competencia)} (${lote.tipo})?`)) return;
+async function enviarLotes() {
+  for (const L of lotes) {
+    if (!/^\d{4}-\d{2}$/.test(L.competencia)) return aviso('Confira a competência de ' + L.nomeArquivo, true);
+    if (!L.tipo) return aviso('Informe o tipo de documento de ' + L.nomeArquivo, true);
+    const rep = L.paginas.filter(p => p.enviar).map(p => matN(p.matricula)).find((m, i, a) => a.indexOf(m) !== i);
+    if (rep) return aviso('A matrícula ' + rep + ' aparece em mais de uma página de ' + L.nomeArquivo, true);
+  }
+  const total = lotes.reduce((s, L) => s + L.paginas.filter(p => p.enviar).length, 0);
+  const meses = lotes.map(L => competencia(L.competencia)).join(', ');
+  if (!confirm(`Enviar ${total} documento(s)?\n\n${meses}`)) return;
   $('#enviar').disabled = true; $('#cancelar').disabled = true;
   const prog = $('#prog'); prog.hidden = false;
-  const barra = n => prog.firstElementChild.style.width = Math.round(100 * n / (lista.length + 1)) + '%';
+  const passos = total + lotes.length; let feito = 0;
+  const barra = () => prog.firstElementChild.style.width = Math.round(100 * (++feito) / passos) + '%';
+  const { PDFDocument } = window.PDFLib;
+  let enviados = 0;
   try {
-    const { PDFDocument } = window.PDFLib;
-    const original = await PDFDocument.load(lote.bytes);
-    await chamar({ action: 'adminOriginal', competencia: lote.competencia, tipo: lote.tipo,
-      nomeArquivo: lote.nomeArquivo, base64: base64DeBytes(lote.bytes) }, 120000);
-    barra(1);
-    for (let i = 0; i < lista.length; i++) {
-      const p = lista[i];
-      const novo = await PDFDocument.create();
-      const [pg] = await novo.copyPages(original, [p.pag - 1]);
-      novo.addPage(pg);
-      const b64 = base64DeBytes(await novo.save());
-      $('#resumo').textContent = `Enviando ${i + 1} de ${lista.length}: ${p.funcionario}…`;
-      await chamar({ action: 'adminEnviar', competencia: lote.competencia, tipo: lote.tipo, matricula: p.matricula,
-        nomeDoc: p.nomeDoc, funcionario: p.funcionario, base64: b64 }, 60000);
-      barra(i + 2);
+    for (const L of lotes) {
+      const lista = L.paginas.filter(p => p.enviar);
+      if (!lista.length) continue;
+      const original = await PDFDocument.load(L.bytes);
+      $('#resumo').textContent = `${competencia(L.competencia)}: guardando o original…`;
+      await chamar({ action: 'adminOriginal', competencia: L.competencia, tipo: L.tipo, nomeArquivo: L.nomeArquivo, base64: base64DeBytes(L.bytes) }, 120000);
+      barra();
+      for (let i = 0; i < lista.length; i++) {
+        const p = lista[i];
+        const novo = await PDFDocument.create();
+        const [pg] = await novo.copyPages(original, [p.pag - 1]);
+        novo.addPage(pg);
+        $('#resumo').textContent = `${competencia(L.competencia)}: ${i + 1} de ${lista.length} (${p.funcionario})…`;
+        await chamar({ action: 'adminEnviar', competencia: L.competencia, tipo: L.tipo, matricula: p.matricula,
+          nomeDoc: p.nomeDoc, funcionario: p.funcionario, base64: base64DeBytes(await novo.save()) }, 60000);
+        p.enviar = false; enviados++; barra();
+      }
     }
-    aviso(`${lista.length} documento(s) enviados.`);
-    lote = null; aba = 'enviados';
+    aviso(`${enviados} documento(s) enviados.`);
+    lotes = []; aba = 'enviados';
     await carregar();
   } catch (e) {
-    aviso('Erro no envio: ' + e.message + ' — os que já foram ficam salvos; pode enviar de novo que substitui.', true);
-    $('#enviar').disabled = false; $('#cancelar').disabled = false;
+    aviso('Erro no envio: ' + e.message + ` — ${enviados} já foram. Clique em Enviar de novo para continuar do ponto onde parou.`, true);
+    telaEnviar();
   }
 }
 
