@@ -7,11 +7,16 @@
 <meta name="robots" content="noindex, nofollow">
 <title>Documentos O&amp;C — Administração</title>
 <link rel="icon" href="../img/favicon.png">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="../img/icone-admin-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Docs Admin">
 <link rel="stylesheet" href="../estilo.css?v=5">
 </head>
 <body>
 <div class="marca"><img src="../img/logo.png" alt="Orro &amp; Christensen"></div>
 <header class="topo"><h1>Documentos O&amp;C · Administração</h1>
+  <button id="btnInstalar" hidden title="Instalar a administração como app">📲 Instalar</button>
   <div class="acoes-topo" id="acoesTopo" hidden><button id="btnLink">🔗 Link do app</button><button id="btnAdm">🛠️ Administrar</button><button id="btnSair">Sair</button></div></header>
 <main id="tela" style="max-width:960px"></main>
 <div id="modal"></div>
@@ -29,6 +34,10 @@ let token = null, dados = null, aba = 'enviar', consultaAdm = null;
 
 $('#btnSair').onclick = () => { token = null; dados = null; lotes = []; telaPin(); };
 const fechar = () => $('#modal').innerHTML = '';
+// Instalar a administração como app (ícone próprio "DOCS ADMIN", separado do app dos funcionários)
+const mostrarInstalar = () => { $('#btnInstalar').hidden = !App.instalacao.podeMostrar(); };
+$('#btnInstalar').onclick = () => App.instalacao.instalar('Docs Admin');
+App.instalacao.aoMudar(mostrarInstalar); mostrarInstalar();
 const APP_URL = window.APP_URL || new URL('../', location.href).href;
 const matN = m => String(m || '').trim().replace(/^0+(?=\d)/, '');
 

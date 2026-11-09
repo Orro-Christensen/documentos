@@ -70,7 +70,7 @@ A aba **Enviados e vistos** mostra, por mês, quem já abriu o documento e quand
 - `limparDuplicados`: junta registros repetidos do mesmo mês/tipo/matrícula (fica o mais recente, mantém o "visto").
 - `corrigirNome`: troca o nome de um funcionário em tudo (Pede Aí: Funcionarios e Pedidos; Documentos: Matriculas, Avisos, Leituras). Preencha `NOME_ANTIGO` e `NOME_NOVO` no código e rode.
 
-Atalhos para planilhas, pasta, script e repositório: botão **🛠️ Administrar**. Link e QR Code do app: **🔗 Link do app**.
+Atalhos para planilhas, pasta, script e repositório: botão **🛠️ Administrar**. Link e QR Code do app: **🔗 Link do app**. A administração também pode ser instalada como app próprio (ícone laranja "DOCS ADMIN"): botão **📲 Instalar** no alto.
 
 ## Arquivos
 
