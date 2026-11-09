@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2f3b4c">
+<meta name="robots" content="noindex, nofollow">
+<title>Documentos O&amp;C — Administração</title>
+<link rel="icon" href="../img/favicon.png">
+<link rel="stylesheet" href="../estilo.css?v=1">
+</head>
+<body>
+<div class="marca"><img src="../img/logo.png" alt="Orro &amp; Christensen"></div>
+<header class="topo"><h1>Documentos O&amp;C · Administração</h1><button id="btnSair" hidden>Sair</button></header>
+<main id="tela" style="max-width:960px"></main>
+
+<script src="../config.js?v=1"></script>
+<script src="../lib/pdf.min.js"></script>
+<script src="../lib/pdf-lib.min.js"></script>
+<script src="../comum.js?v=1"></script>
+<script>
+const { post, esc, competencia, dataBR, base64DeBytes, pdfjs, aviso } = App;
+const $ = s => document.querySelector(s);
+const tela = $('#tela');
+let token = null, dados = null, aba = 'enviar';
+let lote = null;   // { arquivo, bytes, nomeArquivo, competencia, tipo, paginas:[{pag, matricula, nomeDoc, funcionario, enviar}] }
+
+$('#btnSair').onclick = () => { token = null; dados = null; lote = null; telaPin(); };
+
+async function chamar(body, ms) {
+  try { return await post(Object.assign({ token }, body), ms); }
+  catch (e) { if (e.sessao) { token = null; telaPin(e.message); } throw e; }
+}
+
+// ---------- PIN ----------
+function telaPin(msg) {
+  $('#btnSair').hidden = true;
+  tela.innerHTML = `<div class="cartao" style="max-width:380px;margin:30px auto">
+    <div class="titulo" style="margin-top:0">PIN de administração</div>
+    <form id="f"><input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" autofocus>
+    <div class="acoes"><button class="btn btn-ok">Entrar</button></div></form>
+    <div class="meta" id="msg" style="color:var(--perigo)">${esc(msg || '')}</div></div>`;
+  $('#f').onsubmit = async e => {
+    e.preventDefault(); $('#msg').textContent = '';
+    try { token = (await post({ action: 'adminLogin', pin: $('#pin').value })).token; await carregar(); }
+    catch (err) { $('#msg').textContent = err.message; $('#pin').value = ''; }
+  };
+}
+
+async function carregar() {
+  tela.innerHTML = '<div class="carregando">Carregando…</div>';
+  dados = await chamar({ action: 'adminDados' });
+  $('#btnSair').hidden = false;
+  desenhar();
+}
+
+function desenhar() {
+  tela.innerHTML = `<div class="abas">
+      <button data-a="enviar" class="${aba === 'enviar' ? 'on' : ''}">⬆ Enviar documentos</button>
+      <button data-a="enviados" class="${aba === 'enviados' ? 'on' : ''}">📋 Enviados e vistos</button></div>
+    <div id="conteudo"></div>`;
+  tela.querySelectorAll('.abas button').forEach(b => b.onclick = () => { aba = b.dataset.a; desenhar(); });
+  if (aba === 'enviar') telaEnviar(); else telaEnviados();
+}
+
+// ---------- leitura do PDF da contabilidade ----------
+const TIPOS = ['Holerite', 'Adiantamento', '13º salário', 'Recibo de férias', 'Informe de rendimentos', 'Rescisão'];
+function tipoDoTexto(t) {
+  t = String(t || '');
+  if (/13/.test(t)) return '13º salário';
+  if (/f[ée]rias/i.test(t)) return 'Recibo de férias';
+  if (/adiant/i.test(t)) return 'Adiantamento';
+  if (/rescis/i.test(t)) return 'Rescisão';
+  return 'Holerite';
+}
+const sem = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z ]/g, ' ').split(/\s+/).filter(Boolean);
+
+// Sugere o funcionário do Pede Aí: 1º pela matrícula já vinculada; 2º pelo nome
+// (todas as palavras do nome no Pede Aí aparecem no nome do holerite, e só um funcionário bate).
+function sugerir(matricula, nomeDoc) {
+  const m = dados.matriculas.find(x => x.matricula === matricula);
+  if (m && m.funcionario && dados.funcionarios.includes(m.funcionario)) return m.funcionario;
+  const doc = new Set(sem(nomeDoc));
+  const bate = dados.funcionarios.filter(f => { const p = sem(f); return p.length && p.every(x => doc.has(x)); });
+  if (bate.length === 1) return bate[0];
+  const primeiro = sem(nomeDoc)[0];
+  const pp = dados.funcionarios.filter(f => sem(f)[0] === primeiro);
+  return pp.length === 1 ? pp[0] : '';
+}
+
+async function lerPdf(arquivo) {
+  const bytes = new Uint8Array(await arquivo.arrayBuffer());
+  const doc = await pdfjs().getDocument({ data: bytes.slice() }).promise;
+  const paginas = []; let comp = '', tipo = '';
+  for (let n = 1; n <= doc.numPages; n++) {
+    const tc = await (await doc.getPage(n)).getTextContent();
+    const txt = tc.items.map(x => x.str + (x.hasEOL ? '\n' : ' ')).join('');
+    const m = txt.match(/(?:^|\n)\s*([^\n]*?)\s*\n\s*(\d{5,6})\s+([A-ZÀ-Ý][A-ZÀ-Ý' .-]+?)\s*\n?\s*PIS:/);
+    const d = txt.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (!comp && d) comp = d[3] + '-' + d[2];
+    if (!tipo && m) tipo = tipoDoTexto(m[1]);
+    const matricula = m ? m[2] : '', nomeDoc = m ? m[3].trim() : '';
+    const funcionario = matricula ? sugerir(matricula, nomeDoc) : '';
+    paginas.push({ pag: n, matricula, nomeDoc, funcionario, enviar: !!(matricula && funcionario) });
+  }
+  return { nomeArquivo: arquivo.name, bytes, competencia: comp, tipo: tipo || 'Holerite', paginas };
+}
+
+// ---------- aba Enviar ----------
+function telaEnviar() {
+  const c = $('#conteudo');
+  if (!lote) {
+    c.innerHTML = `<label class="arquivo" id="caixa"><input type="file" id="arq" accept="application/pdf,.pdf">
+        <div style="font-size:34px">📄</div><b>Escolher o PDF da contabilidade</b>
+        <div class="meta">O arquivo é lido aqui no navegador e separado por funcionário, uma página para cada um.</div></label>
+      <p class="meta">Funcionário novo? Cadastre primeiro na aba <b>Funcionarios</b> da planilha do Pede Aí, com a senha de 4 números.</p>`;
+    $('#arq').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      c.innerHTML = '<div class="carregando">Lendo o PDF…</div>';
+      try { lote = await lerPdf(f); } catch (err) { aviso('Não consegui ler o PDF: ' + err.message, true); lote = null; }
+      telaEnviar();
+    };
+    return;
+  }
+  const opcoes = sel => '<option value="">— escolher —</option>' + dados.funcionarios.map(f => `<option${f === sel ? ' selected' : ''}>${esc(f)}</option>`).join('');
+  const jaExiste = p => dados.documentos.some(d => d.competencia === lote.competencia && d.tipo === lote.tipo && d.matricula === p.matricula);
+  c.innerHTML = `<div class="cartao">
+      <div><b>${esc(lote.nomeArquivo)}</b> · ${lote.paginas.length} página(s)</div>
+      <div class="linha2">
+        <div><label class="campo">Competência</label><input type="month" id="comp" value="${esc(lote.competencia)}"></div>
+        <div><label class="campo">Tipo de documento</label><input id="tipo" list="tipos" value="${esc(lote.tipo)}">
+          <datalist id="tipos">${TIPOS.map(t => `<option value="${esc(t)}">`).join('')}</datalist></div>
+      </div></div>
+    <div class="cartao tabela-rolagem"><table>
+      <thead><tr><th></th><th>Pág.</th><th>Matrícula</th><th>Nome no documento</th><th>Funcionário (Pede Aí)</th><th></th></tr></thead>
+      <tbody>${lote.paginas.map((p, i) => `<tr class="${p.matricula && p.funcionario ? '' : 'falta'}">
+        <td><input type="checkbox" data-i="${i}" class="chk" ${p.enviar ? 'checked' : ''} style="width:auto"></td>
+        <td>${p.pag}</td>
+        <td><input data-i="${i}" class="mat" value="${esc(p.matricula)}" style="width:90px" placeholder="?"></td>
+        <td>${esc(p.nomeDoc) || '<span class="nao">não identificado</span>'}</td>
+        <td><select data-i="${i}" class="func">${opcoes(p.funcionario)}</select></td>
+        <td>${jaExiste(p) ? '<span class="meta" title="Já existe; o arquivo será trocado">substitui</span>' : ''}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <div class="meta" id="resumo"></div>
+    <div class="progresso" id="prog" hidden><div></div></div>
+    <div class="acoes"><button class="btn btn-claro" id="cancelar">Cancelar</button><button class="btn btn-ok" id="enviar"></button></div>`;
+
+  const resumo = () => {
+    const n = lote.paginas.filter(p => p.enviar).length;
+    const faltam = lote.paginas.filter(p => !p.funcionario || !p.matricula).length;
+    $('#enviar').textContent = `Enviar ${n} documento(s)`;
+    $('#enviar').disabled = !n;
+    $('#resumo').textContent = faltam ? `${faltam} página(s) sem funcionário escolhido (linhas em laranja) não serão enviadas.` : '';
+  };
+  $('#comp').onchange = e => { lote.competencia = e.target.value; telaEnviar(); };
+  $('#tipo').onchange = e => { lote.tipo = e.target.value.trim(); telaEnviar(); };
+  c.querySelectorAll('.chk').forEach(x => x.onchange = () => { const p = lote.paginas[x.dataset.i]; p.enviar = x.checked && !!p.funcionario && !!p.matricula; x.checked = p.enviar; resumo(); });
+  c.querySelectorAll('.func').forEach(x => x.onchange = () => { const p = lote.paginas[x.dataset.i]; p.funcionario = x.value; p.enviar = !!(p.funcionario && p.matricula); telaEnviar(); });
+  c.querySelectorAll('.mat').forEach(x => x.onchange = () => { const p = lote.paginas[x.dataset.i]; p.matricula = x.value.trim(); if (!p.funcionario) p.funcionario = sugerir(p.matricula, p.nomeDoc); p.enviar = !!(p.funcionario && p.matricula); telaEnviar(); });
+  $('#cancelar').onclick = () => { lote = null; telaEnviar(); };
+  $('#enviar').onclick = enviarLote;
+  resumo();
+}
+
+async function enviarLote() {
+  const lista = lote.paginas.filter(p => p.enviar);
+  if (!/^\d{4}-\d{2}$/.test(lote.competencia)) return aviso('Confira a competência', true);
+  if (!lote.tipo) return aviso('Informe o tipo de documento', true);
+  const repetido = lista.map(p => p.matricula).find((m, i, a) => a.indexOf(m) !== i);
+  if (repetido) return aviso('A matrícula ' + repetido + ' aparece em mais de uma página marcada.', true);
+  if (!confirm(`Enviar ${lista.length} documento(s) de ${competencia(lote.competencia)} (${lote.tipo})?`)) return;
+  $('#enviar').disabled = true; $('#cancelar').disabled = true;
+  const prog = $('#prog'); prog.hidden = false;
+  const barra = n => prog.firstElementChild.style.width = Math.round(100 * n / (lista.length + 1)) + '%';
+  try {
+    const { PDFDocument } = window.PDFLib;
+    const original = await PDFDocument.load(lote.bytes);
+    await chamar({ action: 'adminOriginal', competencia: lote.competencia, tipo: lote.tipo,
+      nomeArquivo: lote.nomeArquivo, base64: base64DeBytes(lote.bytes) }, 120000);
+    barra(1);
+    for (let i = 0; i < lista.length; i++) {
+      const p = lista[i];
+      const novo = await PDFDocument.create();
+      const [pg] = await novo.copyPages(original, [p.pag - 1]);
+      novo.addPage(pg);
+      const b64 = base64DeBytes(await novo.save());
+      $('#resumo').textContent = `Enviando ${i + 1} de ${lista.length}: ${p.funcionario}…`;
+      await chamar({ action: 'adminEnviar', competencia: lote.competencia, tipo: lote.tipo, matricula: p.matricula,
+        nomeDoc: p.nomeDoc, funcionario: p.funcionario, base64: b64 }, 60000);
+      barra(i + 2);
+    }
+    aviso(`${lista.length} documento(s) enviados.`);
+    lote = null; aba = 'enviados';
+    await carregar();
+  } catch (e) {
+    aviso('Erro no envio: ' + e.message + ' — os que já foram ficam salvos; pode enviar de novo que substitui.', true);
+    $('#enviar').disabled = false; $('#cancelar').disabled = false;
+  }
+}
+
+// ---------- aba Enviados ----------
+function telaEnviados() {
+  const c = $('#conteudo');
+  const funcDe = mat => (dados.matriculas.find(m => m.matricula === mat) || {}).funcionario || '';
+  const grupos = {};
+  dados.documentos.forEach(d => { const k = d.competencia + '|' + d.tipo; (grupos[k] = grupos[k] || []).push(d); });
+  const chaves = Object.keys(grupos).sort().reverse();
+  const link = window.APP_URL || new URL('..', location.href).href;
+  c.innerHTML = `
+    ${dados.bloqueados.length ? `<div class="cartao" style="border:2px solid var(--perigo)"><b>Acessos bloqueados</b> (10 senhas erradas seguidas)
+      <table>${dados.bloqueados.map(b => `<tr><td>${esc(b.nome)}</td><td class="meta">${esc(dataBR(b.desde))}</td>
+        <td><button class="mini" data-lib="${esc(b.nome)}">Liberar</button></td></tr>`).join('')}</table></div>` : ''}
+    <div class="cartao links">
+      <a href="${esc(dados.pastaUrl)}" target="_blank" rel="noopener">📁 Pasta privada no Drive</a>
+      <a href="${esc(dados.planilhaUrl)}" target="_blank" rel="noopener">🗂️ Planilha de controle</a>
+      <a href="#" id="copiar">🔗 Copiar link do app</a></div>
+    ${chaves.length ? chaves.map(k => {
+      const l = grupos[k].sort((a, b) => (funcDe(a.matricula) || a.nomeDoc).localeCompare(funcDe(b.matricula) || b.nomeDoc, 'pt-BR'));
+      const vistos = l.filter(d => d.vistoEm).length;
+      return `<div class="cartao tabela-rolagem"><div class="titulo" style="margin-top:0">${esc(competencia(l[0].competencia))} · ${esc(l[0].tipo)}
+          <span class="meta" style="text-transform:none">— ${vistos} de ${l.length} vistos</span></div>
+        <table><thead><tr><th>Funcionário</th><th>Matrícula</th><th>Enviado</th><th>Visto pelo funcionário</th><th></th></tr></thead><tbody>
+        ${l.map(d => `<tr><td>${esc(funcDe(d.matricula) || '(sem vínculo)')}<div class="meta">${esc(d.nomeDoc)}</div></td>
+          <td>${esc(d.matricula)}</td><td class="meta">${esc(dataBR(d.enviadoEm))}</td>
+          <td>${d.vistoEm ? `<span class="ok">✓ ${esc(dataBR(d.vistoEm))}</span>` : '<span class="nao">ainda não</span>'}</td>
+          <td><button class="mini perigo" data-exc="${esc(d.id)}">Excluir</button></td></tr>`).join('')}
+        </tbody></table></div>`;
+    }).join('') : '<div class="vazio-msg">Nenhum documento enviado ainda.</div>'}`;
+  c.querySelectorAll('[data-lib]').forEach(b => b.onclick = async () => {
+    try { await chamar({ action: 'adminLiberar', nome: b.dataset.lib }); aviso('Liberado'); await carregar(); } catch (e) { aviso(e.message, true); }
+  });
+  c.querySelectorAll('[data-exc]').forEach(b => b.onclick = async () => {
+    if (!confirm('Excluir este documento? O arquivo vai para a lixeira do Drive.')) return;
+    try { await chamar({ action: 'adminExcluir', id: b.dataset.exc }); aviso('Excluído'); await carregar(); } catch (e) { aviso(e.message, true); }
+  });
+  $('#copiar').onclick = e => { e.preventDefault(); navigator.clipboard.writeText(link).then(() => aviso('Link copiado: ' + link)); };
+}
+
+telaPin();
+</script>
+</body>
+</html>

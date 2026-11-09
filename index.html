@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f3b4c">
+<meta name="robots" content="noindex, nofollow">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Documentos O&amp;C">
+<title>Documentos O&amp;C</title>
+<link rel="icon" href="img/favicon.png">
+<link rel="apple-touch-icon" href="img/icone-180.png">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="estilo.css?v=1">
+</head>
+<body>
+<div class="marca"><img src="img/logo.png" alt="Orro &amp; Christensen"></div>
+<header class="topo">
+  <button class="voltar" id="btnVoltar" hidden aria-label="Voltar">‹</button>
+  <h1 id="titulo">Documentos O&amp;C</h1>
+  <button id="btnSair" hidden>Sair</button>
+</header>
+<main id="tela"><div class="carregando">Carregando…</div></main>
+
+<script src="config.js?v=1"></script>
+<script src="lib/pdf.min.js"></script>
+<script src="comum.js?v=1"></script>
+<script>
+const { post, esc, competencia, dataBR, bytesDeBase64, desenharPdf, baixar, aviso } = App;
+const $ = s => document.querySelector(s);
+const tela = $('#tela');
+
+// Sessão só na memória desta página: fechou ou recarregou, pede a senha de novo.
+// Nenhum documento é guardado no aparelho.
+let sessao = null;          // { token, nome, docs }
+let nomes = null;
+let estado = { v: 'quem' };
+let inativo;
+
+function ir(novo, substituir) {
+  estado = novo;
+  (substituir ? history.replaceState : history.pushState).call(history, novo, '');
+  desenhar(); window.scrollTo(0, 0);
+}
+window.addEventListener('popstate', e => { estado = e.state || { v: sessao ? 'lista' : 'quem' }; desenhar(); });
+$('#btnVoltar').onclick = () => history.back();
+$('#btnSair').onclick = () => sair();
+
+function sair(msg) {
+  if (sessao) post({ action: 'sair', token: sessao.token }).catch(() => {});
+  sessao = null; clearTimeout(inativo);
+  if (msg) aviso(msg, true);
+  ir({ v: 'quem' }, true);
+}
+// 10 minutos sem mexer: sai sozinho (celular pode ficar largado na bancada).
+function mexeu() { clearTimeout(inativo); if (sessao) inativo = setTimeout(() => sair('Saiu por falta de uso. Entre de novo.'), 10 * 60e3); }
+['click', 'touchstart', 'keydown', 'scroll'].forEach(ev => addEventListener(ev, mexeu, { passive: true }));
+
+function erroSessao(e) { if (e.sessao) { sair(e.message); return true; } return false; }
+
+function desenhar() {
+  const v = sessao ? estado.v : (estado.v === 'senha' ? 'senha' : 'quem');
+  $('#btnVoltar').hidden = !(v === 'senha' || v === 'ver');
+  $('#btnSair').hidden = !sessao;
+  $('#titulo').textContent = sessao ? sessao.nome : 'Documentos O&C';
+  if (v === 'quem') return telaQuem();
+  if (v === 'senha') return telaSenha(estado.nome);
+  if (v === 'lista') return telaLista();
+  if (v === 'ver') return telaVer(estado.id);
+}
+
+// ---------- quem é você ----------
+async function telaQuem() {
+  if (!nomes) {
+    tela.innerHTML = '<div class="carregando">Carregando…</div>';
+    try { nomes = (await post({ action: 'funcionarios' })).nomes; }
+    catch (e) { tela.innerHTML = `<div class="vazio-msg">${esc(e.message)}<br><br><button class="btn btn-claro" onclick="location.reload()">Tentar de novo</button></div>`; return; }
+  }
+  tela.innerHTML = `<div class="titulo">Quem é você?</div>
+    ${nomes.length ? `<div class="nomes">${nomes.map(n => `<button class="nome" data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>`
+      : '<div class="vazio-msg">Nenhum documento disponível ainda.</div>'}
+    <p class="rodape">Seus documentos só aparecem depois da sua senha de 4 números (a mesma do Pede Aí).</p>`;
+  tela.querySelectorAll('.nome').forEach(b => b.onclick = () => ir({ v: 'senha', nome: b.dataset.n }));
+}
+
+// ---------- senha ----------
+function telaSenha(nome) {
+  let pin = '', ocupado = false;
+  tela.innerHTML = `<div class="senha-caixa">
+    <div class="titulo" style="text-align:center">${esc(nome)}</div>
+    <div>Digite sua senha</div>
+    <div class="pontos" id="pontos">${'<span></span>'.repeat(4)}</div>
+    <div class="teclado">${[1,2,3,4,5,6,7,8,9].map(n => `<button data-k="${n}">${n}</button>`).join('')}
+      <button class="vazio"></button><button data-k="0">0</button><button data-k="x" aria-label="Apagar">⌫</button></div>
+    <div class="meta" id="msg" style="margin-top:14px;min-height:22px"></div></div>`;
+  const pontos = () => $('#pontos').querySelectorAll('span').forEach((s, i) => s.classList.toggle('cheio', i < pin.length));
+  tela.querySelectorAll('.teclado [data-k]').forEach(b => b.onclick = async () => {
+    if (ocupado) return;
+    const k = b.dataset.k;
+    if (k === 'x') pin = pin.slice(0, -1); else if (pin.length < 4) pin += k;
+    pontos();
+    if (pin.length === 4) {
+      ocupado = true; $('#msg').textContent = 'Conferindo…';
+      try {
+        const r = await post({ action: 'login', nome, senha: pin });
+        sessao = { token: r.token, nome: r.nome, docs: r.docs }; mexeu();
+        ir({ v: 'lista' }, true);
+      } catch (e) {
+        pin = ''; pontos(); ocupado = false;
+        $('#msg').innerHTML = `<span style="color:var(--perigo)">${esc(e.message)}</span>`;
+      }
+    }
+  });
+}
+
+// ---------- lista ----------
+const icone = t => /f[ée]rias/i.test(t) ? '🏖️' : /13/.test(t) ? '🎁' : /informe|rendimento/i.test(t) ? '📊' : '🧾';
+function botaoDoc(d) {
+  return `<button class="doc" data-id="${esc(d.id)}"><span class="ic">${icone(d.tipo)}</span>
+    <span class="txt"><b>${esc(d.tipo)}</b><span class="meta">${esc(competencia(d.competencia))}</span></span>
+    ${d.visto ? '' : '<span class="selo">NOVO</span>'}<span class="seta">›</span></button>`;
+}
+async function telaLista() {
+  const docs = sessao.docs || [];
+  if (!docs.length) { tela.innerHTML = '<div class="vazio-msg" style="margin-top:20px">Você ainda não tem documentos aqui.</div>'; return; }
+  const atual = docs[0].competencia;
+  const doMes = docs.filter(d => d.competencia === atual), antigos = docs.filter(d => d.competencia !== atual);
+  const porMes = {};
+  antigos.forEach(d => (porMes[d.competencia] = porMes[d.competencia] || []).push(d));
+  tela.innerHTML = `<div class="atual" style="margin-top:6px"><div class="rotulo">Mês atual</div>
+      <div class="mes">${esc(competencia(atual))}</div>${doMes.map(botaoDoc).join('')}</div>
+    ${antigos.length ? '<div class="titulo">Meses anteriores</div>' + Object.keys(porMes).map(m => porMes[m].map(botaoDoc).join('')).join('') : ''}
+    <p class="rodape">Toque no documento para abrir. Por segurança, o app sai sozinho depois de 10 minutos parado.</p>`;
+  tela.querySelectorAll('.doc').forEach(b => b.onclick = () => ir({ v: 'ver', id: b.dataset.id }));
+}
+
+// ---------- ver documento ----------
+async function telaVer(id) {
+  const d = (sessao.docs || []).find(x => x.id === id);
+  if (!d) return ir({ v: 'lista' }, true);
+  tela.innerHTML = `<div class="titulo">${esc(d.tipo)} · ${esc(competencia(d.competencia))}</div>
+    <div class="acoes"><button class="btn btn-ok" id="btnBaixar" disabled>⬇ Baixar PDF</button></div>
+    <div class="visor" id="visor"><div class="carregando">Abrindo documento…</div></div>`;
+  try {
+    const r = await post({ action: 'abrir', token: sessao.token, id });
+    if (estado.v !== 'ver' || estado.id !== id) return;
+    const u8 = bytesDeBase64(r.base64);
+    d.visto = true;
+    $('#btnBaixar').disabled = false;
+    $('#btnBaixar').onclick = () => baixar(u8, r.nomeArquivo);
+    await desenharPdf(u8, $('#visor'));
+  } catch (e) {
+    if (erroSessao(e)) return;
+    $('#visor').innerHTML = `<div class="vazio-msg">${esc(e.message)}</div>`;
+  }
+}
+
+history.replaceState(estado, '');
+desenhar();
+</script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+:root {
+  --fundo: #f3f1ec; --cartao: #ffffff; --texto: #1f2328; --suave: #5f6670; --linha: #dedbd3;
+  --topo: #2f3b4c; --acento: #e07a1f; --ok: #1f8a4c; --perigo: #c0392b; --raio: 16px;
+  --sombra: 0 1px 2px rgba(0,0,0,.06), 0 4px 14px rgba(0,0,0,.06);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: var(--fundo); color: var(--texto);
+  font: 17px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+button { font: inherit; cursor: pointer; }
+.marca { background: #fff; padding: 10px 16px; text-align: center; border-bottom: 1px solid var(--linha); }
+.marca img { max-width: 260px; width: 70%; height: auto; display: block; margin: 0 auto; }
+.topo { position: sticky; top: 0; z-index: 5; background: var(--topo); color: #fff; display: flex; align-items: center;
+  gap: 8px; padding: 10px 12px; min-height: 54px; }
+.topo h1 { flex: 1; margin: 0; font-size: 19px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topo button { background: rgba(255,255,255,.14); color: #fff; border: 0; border-radius: 10px; padding: 7px 12px; font-size: 15px; }
+.topo .voltar { font-size: 26px; line-height: 1; padding: 4px 14px 8px; }
+main { max-width: 720px; margin: 0 auto; padding: 16px 14px 60px; }
+.titulo { font-size: 15px; font-weight: 700; color: var(--suave); text-transform: uppercase; letter-spacing: .04em; margin: 22px 4px 10px; }
+.meta { color: var(--suave); font-size: 14px; }
+.carregando { text-align: center; color: var(--suave); padding: 50px 0; }
+
+.nomes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.nome { background: var(--cartao); border: 0; border-radius: var(--raio); box-shadow: var(--sombra); padding: 18px 10px;
+  font-size: 18px; font-weight: 600; color: var(--texto); }
+.nome:active { transform: scale(.98); }
+
+.senha-caixa { max-width: 340px; margin: 10px auto; text-align: center; }
+.pontos { display: flex; justify-content: center; gap: 16px; margin: 18px 0 22px; }
+.pontos span { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--topo); }
+.pontos span.cheio { background: var(--topo); }
+.teclado { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.teclado button { background: var(--cartao); border: 0; border-radius: 14px; box-shadow: var(--sombra); font-size: 26px;
+  font-weight: 600; padding: 14px 0; color: var(--texto); }
+.teclado button.vazio { visibility: hidden; }
+.teclado button:active { background: #e7e4dc; }
+
+.atual { background: var(--topo); color: #fff; border-radius: var(--raio); padding: 16px; box-shadow: var(--sombra); }
+.atual .rotulo { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; opacity: .8; }
+.atual .mes { font-size: 24px; font-weight: 700; margin: 2px 0 12px; }
+.doc { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: var(--cartao); color: var(--texto);
+  border: 0; border-radius: 14px; box-shadow: var(--sombra); padding: 14px; margin-bottom: 10px; }
+.atual .doc { box-shadow: none; }
+.doc .ic { font-size: 28px; }
+.doc .txt { flex: 1; }
+.doc .txt b { display: block; font-size: 17px; }
+.doc .seta { color: var(--suave); font-size: 22px; }
+.selo { background: var(--acento); color: #fff; font-size: 12px; font-weight: 700; border-radius: 99px; padding: 2px 8px; }
+.vazio-msg { background: var(--cartao); border-radius: var(--raio); padding: 24px; text-align: center; color: var(--suave); box-shadow: var(--sombra); }
+
+.visor { background: #fff; border-radius: 10px; box-shadow: var(--sombra); overflow: hidden; }
+.visor canvas { display: block; border-bottom: 1px solid var(--linha); }
+.acoes { display: flex; gap: 10px; margin: 14px 0; }
+.btn { flex: 1; border: 0; border-radius: 14px; padding: 14px 16px; font-weight: 650; font-size: 17px; }
+.btn-ok { background: var(--ok); color: #fff; }
+.btn-claro { background: var(--cartao); color: var(--texto); box-shadow: var(--sombra); }
+.btn-perigo { background: var(--perigo); color: #fff; }
+.btn:disabled { opacity: .5; }
+
+.aviso { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #1f2328; color: #fff;
+  padding: 12px 18px; border-radius: 12px; z-index: 50; max-width: 92vw; box-shadow: var(--sombra); }
+.aviso.erro { background: var(--perigo); }
+.rodape { text-align: center; color: var(--suave); font-size: 13px; margin-top: 30px; }
+
+/* ---------- administração ---------- */
+.cartao { background: var(--cartao); border-radius: var(--raio); box-shadow: var(--sombra); padding: 16px; margin-bottom: 14px; }
+.abas { display: flex; gap: 8px; margin-bottom: 14px; }
+.abas button { flex: 1; border: 0; border-radius: 12px; padding: 11px; background: var(--cartao); box-shadow: var(--sombra); font-weight: 600; }
+.abas button.on { background: var(--topo); color: #fff; }
+label.campo { display: block; font-size: 14px; color: var(--suave); margin: 10px 0 4px; }
+input, select { font: inherit; width: 100%; padding: 10px 12px; border: 1px solid var(--linha); border-radius: 10px; background: #fff; }
+.linha2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.arquivo { display: block; border: 2px dashed var(--linha); border-radius: var(--raio); padding: 26px; text-align: center; background: #fff; cursor: pointer; }
+.arquivo input { display: none; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--linha); vertical-align: middle; }
+th { font-size: 13px; color: var(--suave); font-weight: 600; }
+td select { padding: 6px 8px; }
+tr.falta td { background: #fff4e5; }
+.ok { color: var(--ok); font-weight: 600; }
+.nao { color: var(--suave); }
+.tabela-rolagem { overflow-x: auto; }
+.mini { border: 0; background: #eceae4; border-radius: 8px; padding: 5px 10px; font-size: 14px; }
+.mini.perigo { background: #f7dcd8; color: var(--perigo); }
+.links a { display: inline-block; margin: 4px 10px 4px 0; color: var(--topo); font-weight: 600; }
+.progresso { height: 10px; background: #e7e4dc; border-radius: 99px; overflow: hidden; margin: 10px 0; }
+.progresso div { height: 100%; background: var(--ok); width: 0; transition: width .2s; }
