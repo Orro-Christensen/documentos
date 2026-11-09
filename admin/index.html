@@ -7,17 +7,20 @@
 <meta name="robots" content="noindex, nofollow">
 <title>Documentos O&amp;C — Administração</title>
 <link rel="icon" href="../img/favicon.png">
-<link rel="stylesheet" href="../estilo.css?v=1">
+<link rel="stylesheet" href="../estilo.css?v=3">
 </head>
 <body>
 <div class="marca"><img src="../img/logo.png" alt="Orro &amp; Christensen"></div>
-<header class="topo"><h1>Documentos O&amp;C · Administração</h1><button id="btnSair" hidden>Sair</button></header>
+<header class="topo"><h1>Documentos O&amp;C · Administração</h1>
+  <div class="acoes-topo" id="acoesTopo" hidden><button id="btnLink">🔗 Link do app</button><button id="btnAdm">🛠️ Administrar</button><button id="btnSair">Sair</button></div></header>
 <main id="tela" style="max-width:960px"></main>
+<div id="modal"></div>
 
-<script src="../config.js?v=2"></script>
+<script src="../config.js?v=4"></script>
 <script src="../lib/pdf.min.js"></script>
 <script src="../lib/pdf-lib.min.js"></script>
-<script src="../comum.js?v=1"></script>
+<script src="../lib/qrcode.js"></script>
+<script src="../comum.js?v=3"></script>
 <script>
 const { post, esc, competencia, dataBR, base64DeBytes, pdfjs, aviso } = App;
 const $ = s => document.querySelector(s);
@@ -26,6 +29,43 @@ let token = null, dados = null, aba = 'enviar';
 let lote = null;   // { arquivo, bytes, nomeArquivo, competencia, tipo, paginas:[{pag, matricula, nomeDoc, funcionario, enviar}] }
 
 $('#btnSair').onclick = () => { token = null; dados = null; lote = null; telaPin(); };
+const fechar = () => $('#modal').innerHTML = '';
+const APP_URL = window.APP_URL || new URL('../', location.href).href;
+const matN = m => String(m || '').trim().replace(/^0+(?=\d)/, '');
+
+// Janela de link: endereço + QR Code + copiar + WhatsApp (igual ao Compras do Pede Aí)
+$('#btnLink').onclick = () => {
+  const msg = `Documentos O&C — seus contra-cheques e avisos da empresa:\n${APP_URL}\n\nAbra no celular, toque no seu nome e digite sua senha (a mesma do Pede Aí). Para instalar: menu do navegador → "Adicionar à tela inicial".`;
+  $('#modal').innerHTML = `<div class="fundo-modal" id="fm"><div class="modal">
+    <div class="titulo" style="margin-top:0">🔗 Link do app dos funcionários</div>
+    <div class="link-app">${esc(APP_URL)}</div><div class="qr" id="qr"></div>
+    <p class="meta" style="text-align:center;margin-top:-6px">Aponte a câmera do celular para o QR Code para abrir.</p>
+    <div class="pilha"><button class="btn btn-ok" id="lCopiar">📋 Copiar link</button>
+      <a class="btn btn-acento" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg)}">📱 Enviar pelo WhatsApp</a>
+      <button class="btn btn-claro" id="lX">Fechar</button></div></div></div>`;
+  try { const q = qrcode(0, 'M'); q.addData(APP_URL); q.make(); $('#qr').innerHTML = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); }
+  catch (e) { $('#qr').innerHTML = '<span class="meta">QR Code indisponível</span>'; }
+  $('#lCopiar').onclick = () => navigator.clipboard.writeText(APP_URL).then(() => aviso('Link copiado'));
+  $('#lX').onclick = fechar; $('#fm').onclick = e => { if (e.target.id === 'fm') fechar(); };
+};
+// Atalhos de administração
+$('#btnAdm').onclick = () => {
+  const L = [
+    { ic: '🗂️', t: 'Planilha de controle', d: 'Documentos enviados, matrículas, avisos e quem leu', u: dados.planilhaUrl },
+    { ic: '📁', t: 'Pasta privada no Drive', d: 'Os PDFs de cada mês e os anexos dos avisos', u: dados.pastaUrl },
+    { ic: '👷', t: 'Funcionários e senhas (Pede Aí)', d: 'Aba Funcionarios: nome, ativo e senha de 4 números', u: dados.pedeAiUrl },
+    { ic: '⚙️', t: 'Script (Google Apps Script)', d: 'Liga o site ao Drive; funções limparDuplicados, corrigirNome…', u: window.SCRIPT_URL },
+    { ic: '📦', t: 'Repositório (GitHub)', d: 'Arquivos do site e manual (LEIA-ME)', u: window.REPO_URL },
+  ].filter(l => l.u);
+  $('#modal').innerHTML = `<div class="fundo-modal" id="fm"><div class="modal largo">
+    <div class="titulo" style="margin-top:0">🛠️ Administrar</div>
+    <div class="admin-lista">${L.map(l => `<div class="admin-item"><div class="ic">${l.ic}</div>
+      <div class="tx"><b>${esc(l.t)}</b><span>${esc(l.d)}</span></div>
+      <a href="${esc(l.u)}" target="_blank" rel="noopener">Abrir</a></div>`).join('')}</div>
+    <p class="meta">Planilhas, pasta e script: entre com a conta Google dona da planilha. Repositório: conta do GitHub da organização Orro-Christensen.</p>
+    <button class="btn btn-claro" id="aX" style="width:100%">Fechar</button></div></div>`;
+  $('#aX').onclick = fechar; $('#fm').onclick = e => { if (e.target.id === 'fm') fechar(); };
+};
 
 async function chamar(body, ms) {
   try { return await post(Object.assign({ token }, body), ms); }
@@ -34,7 +74,7 @@ async function chamar(body, ms) {
 
 // ---------- PIN ----------
 function telaPin(msg) {
-  $('#btnSair').hidden = true;
+  $('#acoesTopo').hidden = true;
   tela.innerHTML = `<div class="cartao" style="max-width:380px;margin:30px auto">
     <div class="titulo" style="margin-top:0">PIN de administração</div>
     <form id="f"><input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" autofocus>
@@ -50,17 +90,18 @@ function telaPin(msg) {
 async function carregar() {
   tela.innerHTML = '<div class="carregando">Carregando…</div>';
   dados = await chamar({ action: 'adminDados' });
-  $('#btnSair').hidden = false;
+  $('#acoesTopo').hidden = false;
   desenhar();
 }
 
 function desenhar() {
   tela.innerHTML = `<div class="abas">
-      <button data-a="enviar" class="${aba === 'enviar' ? 'on' : ''}">⬆ Enviar documentos</button>
+      <button data-a="enviar" class="${aba === 'enviar' ? 'on' : ''}">🧾 Holerites</button>
+      <button data-a="avisos" class="${aba === 'avisos' ? 'on' : ''}">📢 Avisos</button>
       <button data-a="enviados" class="${aba === 'enviados' ? 'on' : ''}">📋 Enviados e vistos</button></div>
     <div id="conteudo"></div>`;
   tela.querySelectorAll('.abas button').forEach(b => b.onclick = () => { aba = b.dataset.a; desenhar(); });
-  if (aba === 'enviar') telaEnviar(); else telaEnviados();
+  if (aba === 'enviar') telaEnviar(); else if (aba === 'avisos') telaAvisos(); else telaEnviados();
 }
 
 // ---------- leitura do PDF da contabilidade ----------
@@ -77,14 +118,26 @@ const sem = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUppe
 
 // Sugere o funcionário do Pede Aí: 1º pela matrícula já vinculada; 2º pelo nome
 // (todas as palavras do nome no Pede Aí aparecem no nome do holerite, e só um funcionário bate).
+// Diferença de até 1 letra (Antthony ≈ ANTHONY, Abraâo ≈ ABRAAO).
+function parecido(a, b) {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, dif = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++dif > 1) return false;
+    if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+  }
+  return dif + (a.length - i) + (b.length - j) <= 1;
+}
 function sugerir(matricula, nomeDoc) {
-  const m = dados.matriculas.find(x => x.matricula === matricula);
+  const m = dados.matriculas.find(x => x.matricula === matN(matricula));
   if (m && m.funcionario && dados.funcionarios.includes(m.funcionario)) return m.funcionario;
-  const doc = new Set(sem(nomeDoc));
-  const bate = dados.funcionarios.filter(f => { const p = sem(f); return p.length && p.every(x => doc.has(x)); });
+  const doc = sem(nomeDoc);
+  const tem = x => doc.some(y => parecido(x, y));
+  const bate = dados.funcionarios.filter(f => { const p = sem(f); return p.length && p.every(tem); });
   if (bate.length === 1) return bate[0];
-  const primeiro = sem(nomeDoc)[0];
-  const pp = dados.funcionarios.filter(f => sem(f)[0] === primeiro);
+  const pp = dados.funcionarios.filter(f => parecido(sem(f)[0] || '', doc[0] || ''));
   return pp.length === 1 ? pp[0] : '';
 }
 
@@ -123,7 +176,7 @@ function telaEnviar() {
     return;
   }
   const opcoes = sel => '<option value="">— escolher —</option>' + dados.funcionarios.map(f => `<option${f === sel ? ' selected' : ''}>${esc(f)}</option>`).join('');
-  const jaExiste = p => dados.documentos.some(d => d.competencia === lote.competencia && d.tipo === lote.tipo && d.matricula === p.matricula);
+  const jaExiste = p => dados.documentos.some(d => d.competencia === lote.competencia && d.tipo === lote.tipo && d.matricula === matN(p.matricula));
   c.innerHTML = `<div class="cartao">
       <div><b>${esc(lote.nomeArquivo)}</b> · ${lote.paginas.length} página(s)</div>
       <div class="linha2">
@@ -166,7 +219,7 @@ async function enviarLote() {
   const lista = lote.paginas.filter(p => p.enviar);
   if (!/^\d{4}-\d{2}$/.test(lote.competencia)) return aviso('Confira a competência', true);
   if (!lote.tipo) return aviso('Informe o tipo de documento', true);
-  const repetido = lista.map(p => p.matricula).find((m, i, a) => a.indexOf(m) !== i);
+  const repetido = lista.map(p => matN(p.matricula)).find((m, i, a) => a.indexOf(m) !== i);
   if (repetido) return aviso('A matrícula ' + repetido + ' aparece em mais de uma página marcada.', true);
   if (!confirm(`Enviar ${lista.length} documento(s) de ${competencia(lote.competencia)} (${lote.tipo})?`)) return;
   $('#enviar').disabled = true; $('#cancelar').disabled = true;
@@ -201,11 +254,10 @@ async function enviarLote() {
 // ---------- aba Enviados ----------
 function telaEnviados() {
   const c = $('#conteudo');
-  const funcDe = mat => (dados.matriculas.find(m => m.matricula === mat) || {}).funcionario || '';
+  const funcDe = mat => (dados.matriculas.find(m => m.matricula === matN(mat)) || {}).funcionario || '';
   const grupos = {};
   dados.documentos.forEach(d => { const k = d.competencia + '|' + d.tipo; (grupos[k] = grupos[k] || []).push(d); });
   const chaves = Object.keys(grupos).sort().reverse();
-  const link = window.APP_URL || new URL('..', location.href).href;
   c.innerHTML = `
     ${dados.bloqueados.length ? `<div class="cartao" style="border:2px solid var(--perigo)"><b>Acessos bloqueados</b> (10 senhas erradas seguidas)
       <table>${dados.bloqueados.map(b => `<tr><td>${esc(b.nome)}</td><td class="meta">${esc(dataBR(b.desde))}</td>
@@ -213,7 +265,7 @@ function telaEnviados() {
     <div class="cartao links">
       <a href="${esc(dados.pastaUrl)}" target="_blank" rel="noopener">📁 Pasta privada no Drive</a>
       <a href="${esc(dados.planilhaUrl)}" target="_blank" rel="noopener">🗂️ Planilha de controle</a>
-      <a href="#" id="copiar">🔗 Copiar link do app</a></div>
+</div>
     ${chaves.length ? chaves.map(k => {
       const l = grupos[k].sort((a, b) => (funcDe(a.matricula) || a.nomeDoc).localeCompare(funcDe(b.matricula) || b.nomeDoc, 'pt-BR'));
       const vistos = l.filter(d => d.vistoEm).length;
@@ -221,7 +273,7 @@ function telaEnviados() {
           <span class="meta" style="text-transform:none">— ${vistos} de ${l.length} vistos</span></div>
         <table><thead><tr><th>Funcionário</th><th>Matrícula</th><th>Enviado</th><th>Visto pelo funcionário</th><th></th></tr></thead><tbody>
         ${l.map(d => `<tr><td>${esc(funcDe(d.matricula) || '(sem vínculo)')}<div class="meta">${esc(d.nomeDoc)}</div></td>
-          <td>${esc(d.matricula)}</td><td class="meta">${esc(dataBR(d.enviadoEm))}</td>
+          <td>${esc(d.matricula.padStart(5, '0'))}</td><td class="meta">${esc(dataBR(d.enviadoEm))}</td>
           <td>${d.vistoEm ? `<span class="ok">✓ ${esc(dataBR(d.vistoEm))}</span>` : '<span class="nao">ainda não</span>'}</td>
           <td><button class="mini perigo" data-exc="${esc(d.id)}">Excluir</button></td></tr>`).join('')}
         </tbody></table></div>`;
@@ -233,7 +285,73 @@ function telaEnviados() {
     if (!confirm('Excluir este documento? O arquivo vai para a lixeira do Drive.')) return;
     try { await chamar({ action: 'adminExcluir', id: b.dataset.exc }); aviso('Excluído'); await carregar(); } catch (e) { aviso(e.message, true); }
   });
-  $('#copiar').onclick = e => { e.preventDefault(); navigator.clipboard.writeText(link).then(() => aviso('Link copiado: ' + link)); };
+}
+
+// ---------- aba Avisos ----------
+let anexo = null;   // { base64, mime, nome }
+async function lerAnexo(f) {
+  if (f.type === 'application/pdf') return { base64: base64DeBytes(new Uint8Array(await f.arrayBuffer())), mime: f.type, nome: f.name };
+  if (!/^image\//.test(f.type)) throw new Error('Escolha um PDF ou uma foto');
+  // Foto: reduz para no máximo 1600 px (fica leve para abrir no celular).
+  const img = await createImageBitmap(f), k = Math.min(1, 1600 / Math.max(img.width, img.height));
+  const cv = document.createElement('canvas'); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+  cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+  const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+  return { base64: base64DeBytes(new Uint8Array(await blob.arrayBuffer())), mime: 'image/jpeg', nome: f.name.replace(/\.[^.]+$/, '') + '.jpg' };
+}
+function telaAvisos() {
+  const c = $('#conteudo');
+  c.innerHTML = `<div class="cartao">
+      <div class="titulo" style="margin-top:0">Novo aviso</div>
+      <label class="campo">Título</label><input id="avTit" maxlength="120" placeholder="Ex.: Feriado de 15 de novembro">
+      <label class="campo">Texto</label><textarea id="avTxt" placeholder="Escreva o aviso…"></textarea>
+      <label class="campo">Anexo (opcional): PDF ou foto</label>
+      <input type="file" id="avArq" accept="application/pdf,image/*">
+      <div class="meta" id="avArqInfo"></div>
+      <label class="campo">Para quem</label>
+      <div class="radio"><label><input type="radio" name="para" value="todos" checked> Todos os funcionários</label>
+        <label><input type="radio" name="para" value="alguns"> Escolher</label></div>
+      <div class="escolha" id="avQuem" hidden>${dados.funcionarios.map(f => `<label><input type="checkbox" value="${esc(f)}"> ${esc(f)}</label>`).join('')}</div>
+      <div class="acoes"><button class="btn btn-ok" id="avEnviar">📢 Publicar aviso</button></div>
+    </div>
+    <div class="titulo">Avisos publicados</div>
+    ${dados.avisos.length ? dados.avisos.map(a => {
+      const leram = new Set(a.leram.map(l => l.nome)), faltam = a.para.filter(n => !leram.has(n));
+      return `<div class="cartao"><div style="display:flex;gap:10px;align-items:flex-start">
+          <div style="flex:1"><b>${esc(a.titulo)}</b><div class="meta">${esc(dataBR(a.data))} · ${a.todos ? 'todos' : esc(a.para.length + ' funcionário(s)')}${a.anexo ? ' · 📎 ' + esc(a.anexo) : ''}</div></div>
+          <button class="mini perigo" data-arq="${esc(a.id)}">Arquivar</button></div>
+        ${a.texto ? `<div class="meta" style="white-space:pre-wrap;margin-top:8px">${esc(a.texto.length > 220 ? a.texto.slice(0, 220) + '…' : a.texto)}</div>` : ''}
+        <div style="margin-top:8px"><span class="ok">Lido por ${a.leram.length} de ${a.para.length}</span></div>
+        <details><summary>Ver quem leu</summary>
+          <div class="meta" style="margin-top:6px">${a.leram.map(l => `✓ ${esc(l.nome)} (${esc(dataBR(l.em))})`).join('<br>') || 'Ninguém ainda.'}</div>
+          ${faltam.length ? `<div class="meta" style="margin-top:6px"><b>Ainda não leram:</b> ${faltam.map(esc).join(', ')}</div>` : ''}
+        </details></div>`;
+    }).join('') : '<div class="vazio-msg">Nenhum aviso publicado.</div>'}`;
+  c.querySelectorAll('input[name=para]').forEach(r => r.onchange = () => { $('#avQuem').hidden = c.querySelector('input[name=para]:checked').value !== 'alguns'; });
+  $('#avArq').onchange = async e => {
+    const f = e.target.files[0]; anexo = null; $('#avArqInfo').textContent = '';
+    if (!f) return;
+    try { anexo = await lerAnexo(f); $('#avArqInfo').textContent = '📎 ' + anexo.nome + ' (' + Math.round(anexo.base64.length * 0.75 / 1024) + ' KB)'; }
+    catch (err) { aviso(err.message, true); e.target.value = ''; }
+  };
+  $('#avEnviar').onclick = async () => {
+    const titulo = $('#avTit').value.trim(), texto = $('#avTxt').value.trim();
+    if (!titulo) return aviso('Escreva o título', true);
+    const alguns = c.querySelector('input[name=para]:checked').value === 'alguns';
+    const dest = alguns ? [...$('#avQuem').querySelectorAll('input:checked')].map(x => x.value) : 'TODOS';
+    if (alguns && !dest.length) return aviso('Escolha pelo menos um funcionário', true);
+    if (!confirm(`Publicar "${titulo}" para ${alguns ? dest.length + ' funcionário(s)' : 'todos os funcionários'}?`)) return;
+    $('#avEnviar').disabled = true; $('#avEnviar').textContent = 'Publicando…';
+    try {
+      await chamar(Object.assign({ action: 'adminAviso', titulo, texto, destinatarios: dest },
+        anexo ? { base64: anexo.base64, mime: anexo.mime, nomeArquivo: anexo.nome } : {}), 120000);
+      anexo = null; aviso('Aviso publicado'); await carregar();
+    } catch (e) { aviso(e.message, true); $('#avEnviar').disabled = false; $('#avEnviar').textContent = '📢 Publicar aviso'; }
+  };
+  c.querySelectorAll('[data-arq]').forEach(b => b.onclick = async () => {
+    if (!confirm('Arquivar este aviso? Ele some do app dos funcionários (o registro continua na planilha).')) return;
+    try { await chamar({ action: 'adminArquivarAviso', id: b.dataset.arq }); aviso('Arquivado'); await carregar(); } catch (e) { aviso(e.message, true); }
+  });
 }
 
 telaPin();

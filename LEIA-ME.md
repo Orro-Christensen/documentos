@@ -45,17 +45,32 @@ Enviou errado? Mandar o mesmo mês e tipo de novo **substitui** o arquivo daquel
 
 **Funcionário novo:** cadastre primeiro na aba **Funcionarios** da planilha do Pede Aí (nome, Ativo = SIM, senha de 4 números). Depois ele aparece na lista para ser ligado à matrícula.
 
-## 3. Acompanhamento
+## 3. Avisos (segurança, feriados, comunicados)
+
+Na administração, aba **📢 Avisos**: título, texto, anexo opcional (PDF ou foto; foto é reduzida automaticamente) e para quem: **todos** ou funcionários escolhidos. O aviso aparece no topo do app com o selo **NOVO**. Em "Ver quem leu" aparece quem já abriu e quem ainda não. **Arquivar** tira o aviso do app (o registro continua na planilha).
+
+## 4. Troca de senha pelo funcionário
+
+No app, depois de entrar: **🔑 Quero trocar minha senha** → senha atual + nova (2 vezes). A nova é gravada na aba Funcionarios do Pede Aí e vale nos dois apps. Senhas fáceis (1234, 0000, 1212…) são recusadas.
+
+## 5. Acompanhamento
 
 A aba **Enviados e vistos** mostra, por mês, quem já abriu o documento e quando. O mesmo registro fica na planilha de controle (colunas "Visto em" e "Vezes visto"). Serve de comprovante de que o documento foi disponibilizado.
 
-## 4. Segurança
+## 6. Segurança
 
 - Os PDFs ficam numa pasta do Drive que **só você** acessa. O Apps Script roda como você e entrega cada arquivo apenas para o dono, depois de conferir a senha.
 - Senha errada: 5 seguidas → pausa de 15 min; **10 seguidas → bloqueado** até você clicar em **Liberar** na administração. Você recebe um e-mail quando isso acontece.
 - A sessão do funcionário vale 30 minutos e o app sai sozinho depois de 10 minutos parado. Nada fica salvo no celular, a não ser que ele toque em **Baixar PDF**.
 - PIN de administração: 5 erros seguidos bloqueiam a administração por 15 min (com aviso por e-mail).
 - A senha de 4 números é a mesma do Pede Aí. Se alguém descobrir a senha de um colega, verá os documentos dele. Por isso: **cada um deve guardar a sua**, e senhas fáceis (0000, 1234, ano de nascimento) devem ser trocadas na planilha.
+
+## 7. Manutenção (funções no Apps Script)
+
+- `limparDuplicados`: junta registros repetidos do mesmo mês/tipo/matrícula (fica o mais recente, mantém o "visto").
+- `corrigirNome`: troca o nome de um funcionário em tudo (Pede Aí: Funcionarios e Pedidos; Documentos: Matriculas, Avisos, Leituras). Preencha `NOME_ANTIGO` e `NOME_NOVO` no código e rode.
+
+Atalhos para planilhas, pasta, script e repositório: botão **🛠️ Administrar**. Link e QR Code do app: **🔗 Link do app**.
 
 ## Arquivos
 

@@ -12,7 +12,7 @@
 <link rel="icon" href="img/favicon.png">
 <link rel="apple-touch-icon" href="img/icone-180.png">
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="estilo.css?v=1">
+<link rel="stylesheet" href="estilo.css?v=3">
 </head>
 <body>
 <div class="marca"><img src="img/logo.png" alt="Orro &amp; Christensen"></div>
@@ -23,9 +23,9 @@
 </header>
 <main id="tela"><div class="carregando">Carregando…</div></main>
 
-<script src="config.js?v=3"></script>
+<script src="config.js?v=4"></script>
 <script src="lib/pdf.min.js"></script>
-<script src="comum.js?v=2"></script>
+<script src="comum.js?v=3"></script>
 <script>
 const { post, esc, competencia, dataBR, bytesDeBase64, desenharPdf, baixar, aviso } = App;
 const $ = s => document.querySelector(s);
@@ -61,13 +61,15 @@ function erroSessao(e) { if (e.sessao) { sair(e.message); return true; } return 
 
 function desenhar() {
   const v = sessao ? estado.v : (estado.v === 'senha' ? 'senha' : 'quem');
-  $('#btnVoltar').hidden = !(v === 'senha' || v === 'ver');
+  $('#btnVoltar').hidden = !['senha', 'ver', 'aviso', 'trocar'].includes(v);
   $('#btnSair').hidden = !sessao;
   $('#titulo').textContent = sessao ? sessao.nome : 'Documentos O&C';
   if (v === 'quem') return telaQuem();
   if (v === 'senha') return telaSenha(estado.nome);
   if (v === 'lista') return telaLista();
   if (v === 'ver') return telaVer(estado.id);
+  if (v === 'aviso') return telaAviso(estado.id);
+  if (v === 'trocar') return telaTrocar();
 }
 
 // ---------- quem é você ----------
@@ -79,7 +81,7 @@ async function telaQuem() {
   if (sessao || estado.v === 'senha') return;
   tela.innerHTML = `<div class="titulo">Quem é você?</div>
     ${nomes.length ? `<div class="nomes">${nomes.map(n => `<button class="nome" data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>`
-      : '<div class="vazio-msg">Nenhum documento disponível ainda.</div>'}
+      : '<div class="vazio-msg">Nenhum funcionário cadastrado.</div>'}
     <p class="rodape">Seus documentos só aparecem depois da sua senha de 4 números (a mesma do Pede Aí).</p>`;
   tela.querySelectorAll('.nome').forEach(b => b.onclick = () => ir({ v: 'senha', nome: b.dataset.n }));
 }
@@ -104,7 +106,7 @@ function telaSenha(nome) {
       ocupado = true; $('#msg').textContent = 'Conferindo…';
       try {
         const r = await post({ action: 'login', nome, senha: pin });
-        sessao = { token: r.token, nome: r.nome, docs: r.docs }; mexeu();
+        sessao = { token: r.token, nome: r.nome, docs: r.docs, avisos: r.avisos || [] }; mexeu();
         ir({ v: 'lista' }, true);
       } catch (e) {
         pin = ''; pontos(); ocupado = false;
@@ -121,18 +123,85 @@ function botaoDoc(d) {
     <span class="txt"><b>${esc(d.tipo)}</b><span class="meta">${esc(competencia(d.competencia))}</span></span>
     ${d.visto ? '' : '<span class="selo">NOVO</span>'}<span class="seta">›</span></button>`;
 }
+function botaoAviso(a) {
+  return `<button class="doc" data-av="${esc(a.id)}"><span class="ic">📢</span>
+    <span class="txt"><b>${esc(a.titulo)}</b><span class="meta">${esc(dataBR(a.data).slice(0, 8))}${a.anexo ? ' · 📎 anexo' : ''}</span></span>
+    ${a.lido ? '' : '<span class="selo">NOVO</span>'}<span class="seta">›</span></button>`;
+}
 async function telaLista() {
-  const docs = sessao.docs || [];
-  if (!docs.length) { tela.innerHTML = '<div class="vazio-msg" style="margin-top:20px">Você ainda não tem documentos aqui.</div>'; return; }
-  const atual = docs[0].competencia;
-  const doMes = docs.filter(d => d.competencia === atual), antigos = docs.filter(d => d.competencia !== atual);
-  const porMes = {};
-  antigos.forEach(d => (porMes[d.competencia] = porMes[d.competencia] || []).push(d));
-  tela.innerHTML = `<div class="atual" style="margin-top:6px"><div class="rotulo">Mês atual</div>
+  const docs = sessao.docs || [], avisos = sessao.avisos || [];
+  let h = '';
+  if (avisos.length) {
+    const novos = avisos.filter(a => !a.lido), lidos = avisos.filter(a => a.lido);
+    h += `<div class="titulo">📢 Avisos da empresa</div>${novos.map(botaoAviso).join('')}${lidos.slice(0, novos.length ? 3 : 5).map(botaoAviso).join('')}`;
+    if (lidos.length > (novos.length ? 3 : 5)) h += `<details><summary>Avisos antigos (${lidos.length - (novos.length ? 3 : 5)})</summary>${lidos.slice(novos.length ? 3 : 5).map(botaoAviso).join('')}</details>`;
+  }
+  if (docs.length) {
+    const atual = docs[0].competencia;
+    const doMes = docs.filter(d => d.competencia === atual), antigos = docs.filter(d => d.competencia !== atual);
+    h += `<div class="titulo">🧾 Contra-cheques</div><div class="atual"><div class="rotulo">Mês atual</div>
       <div class="mes">${esc(competencia(atual))}</div>${doMes.map(botaoDoc).join('')}</div>
-    ${antigos.length ? '<div class="titulo">Meses anteriores</div>' + Object.keys(porMes).map(m => porMes[m].map(botaoDoc).join('')).join('') : ''}
-    <p class="rodape">Toque no documento para abrir. Por segurança, o app sai sozinho depois de 10 minutos parado.</p>`;
-  tela.querySelectorAll('.doc').forEach(b => b.onclick = () => ir({ v: 'ver', id: b.dataset.id }));
+      ${antigos.length ? '<div class="titulo">Meses anteriores</div>' + antigos.map(botaoDoc).join('') : ''}`;
+  }
+  if (!h) h = '<div class="vazio-msg" style="margin-top:20px">Você ainda não tem documentos nem avisos aqui.</div>';
+  tela.innerHTML = h + `<button class="btn-senha" id="btnTrocar">🔑 Quero trocar minha senha</button>
+    <p class="rodape">Toque no item para abrir. Por segurança, o app sai sozinho depois de 10 minutos parado.</p>`;
+  tela.querySelectorAll('[data-id]').forEach(b => b.onclick = () => ir({ v: 'ver', id: b.dataset.id }));
+  tela.querySelectorAll('[data-av]').forEach(b => b.onclick = () => ir({ v: 'aviso', id: b.dataset.av }));
+  $('#btnTrocar').onclick = () => ir({ v: 'trocar' });
+}
+
+// ---------- ver aviso ----------
+async function telaAviso(id) {
+  const a = (sessao.avisos || []).find(x => x.id === id);
+  if (!a) return ir({ v: 'lista' }, true);
+  tela.innerHTML = `<div class="titulo">📢 ${esc(dataBR(a.data).slice(0, 8))}</div><div class="carregando">Abrindo aviso…</div>`;
+  try {
+    const r = await post({ action: 'abrirAviso', token: sessao.token, id });
+    if (estado.v !== 'aviso' || estado.id !== id) return;
+    a.lido = true;
+    tela.innerHTML = `<div class="titulo">📢 ${esc(dataBR(r.data).slice(0, 8))}</div>
+      <div class="aviso-texto"><b style="font-size:20px">${esc(r.titulo)}</b>${r.texto ? '\n\n' + esc(r.texto) : ''}</div>
+      ${r.base64 ? `<div class="acoes"><button class="btn btn-ok" id="btnBaixar">⬇ Baixar anexo</button></div><div class="visor" id="visor"></div>` : ''}`;
+    if (r.base64) {
+      const u8 = bytesDeBase64(r.base64);
+      $('#btnBaixar').onclick = () => baixar(u8, r.nomeArquivo || 'anexo', r.mime);
+      if (r.mime === 'application/pdf') await desenharPdf(u8, $('#visor'));
+      else { const img = new Image(); img.src = URL.createObjectURL(new Blob([u8], { type: r.mime })); $('#visor').appendChild(img); }
+    }
+  } catch (e) {
+    if (erroSessao(e)) return;
+    tela.innerHTML = `<div class="vazio-msg">${esc(e.message)}</div>`;
+  }
+}
+
+// ---------- trocar senha ----------
+function telaTrocar() {
+  tela.innerHTML = `<div class="senha-caixa" style="max-width:380px">
+    <div class="titulo" style="text-align:center">🔑 Trocar minha senha</div>
+    <p class="meta" style="text-align:center">A senha nova vale aqui e no Pede Aí. Use 4 números fáceis para você e difíceis para os outros (nada de 1234, 0000 ou ano de nascimento).</p>
+    <form id="fs" autocomplete="off">
+      <label class="campo">Senha atual</label><input id="sAtual" class="campo-senha" type="password" inputmode="numeric" maxlength="4" pattern="\\d{4}" required>
+      <label class="campo">Senha nova</label><input id="sNova" class="campo-senha" type="password" inputmode="numeric" maxlength="4" pattern="\\d{4}" required>
+      <label class="campo">Repita a senha nova</label><input id="sNova2" class="campo-senha" type="password" inputmode="numeric" maxlength="4" pattern="\\d{4}" required>
+      <div class="acoes"><button class="btn btn-ok" id="sOk">Trocar senha</button></div>
+      <div class="meta" id="sMsg" style="color:var(--perigo);text-align:center;min-height:22px"></div>
+    </form></div>`;
+  $('#fs').onsubmit = async e => {
+    e.preventDefault();
+    const atual = $('#sAtual').value.trim(), nova = $('#sNova').value.trim();
+    if (!/^\d{4}$/.test(nova)) return $('#sMsg').textContent = 'A senha nova precisa ter 4 números.';
+    if (nova !== $('#sNova2').value.trim()) return $('#sMsg').textContent = 'As duas senhas novas não são iguais.';
+    $('#sOk').disabled = true; $('#sMsg').textContent = '';
+    try {
+      await post({ action: 'trocarSenha', token: sessao.token, atual, nova });
+      aviso('Senha trocada! Use a nova aqui e no Pede Aí.');
+      history.back();
+    } catch (err) {
+      if (erroSessao(err)) return;
+      $('#sMsg').textContent = err.message; $('#sOk').disabled = false;
+    }
+  };
 }
 
 // ---------- ver documento ----------

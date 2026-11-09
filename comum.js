@@ -67,8 +67,8 @@
     }
   }
 
-  function baixar(u8, nome) {
-    const url = URL.createObjectURL(new Blob([u8], { type: 'application/pdf' }));
+  function baixar(u8, nome, mime) {
+    const url = URL.createObjectURL(new Blob([u8], { type: mime || 'application/pdf' }));
     const a = document.createElement('a'); a.href = url; a.download = nome; document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
   }

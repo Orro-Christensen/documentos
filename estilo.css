@@ -84,3 +84,32 @@ tr.falta td { background: #fff4e5; }
 .links a { display: inline-block; margin: 4px 10px 4px 0; color: var(--topo); font-weight: 600; }
 .progresso { height: 10px; background: #e7e4dc; border-radius: 99px; overflow: hidden; margin: 10px 0; }
 .progresso div { height: 100%; background: var(--ok); width: 0; transition: width .2s; }
+
+/* ---------- janelas (modal), atalhos, avisos ---------- */
+.fundo-modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 40; display: flex; align-items: center; justify-content: center; padding: 12px; }
+.modal { background: #fff; width: 100%; max-width: 560px; border-radius: 20px; padding: 18px; max-height: 92vh; overflow-y: auto; }
+.modal.largo { max-width: 720px; }
+.pilha { display: grid; gap: 10px; margin-top: 12px; }
+.pilha .btn { text-align: center; text-decoration: none; display: block; }
+.btn-acento { background: #25a244; color: #fff; }
+.link-app { background: #f6f5f1; border-radius: 10px; padding: 10px; word-break: break-all; font-size: 15px; text-align: center; }
+.qr { width: 220px; margin: 12px auto; }
+.qr svg { width: 100%; height: auto; }
+.admin-lista { display: grid; gap: 10px; margin: 12px 0 16px; }
+.admin-item { display: flex; gap: 12px; align-items: center; background: #f6f5f1; border: 1px solid var(--linha); border-radius: 14px; padding: 12px; }
+.admin-item .ic { font-size: 28px; width: 40px; text-align: center; flex: none; }
+.admin-item .tx { flex: 1; min-width: 0; } .admin-item .tx b { display: block; } .admin-item .tx span { color: var(--suave); font-size: 14px; }
+.admin-item a { text-decoration: none; background: var(--topo); color: #fff; border-radius: 10px; padding: 9px 14px; font-weight: 700; white-space: nowrap; }
+@media (max-width: 640px) { .admin-item { flex-wrap: wrap; } }
+.topo .acoes-topo { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+textarea { font: inherit; width: 100%; padding: 10px 12px; border: 1px solid var(--linha); border-radius: 10px; min-height: 120px; resize: vertical; }
+.escolha { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px; margin-top: 8px; }
+.escolha label { display: flex; gap: 8px; align-items: center; background: #f6f5f1; border-radius: 10px; padding: 8px 10px; font-size: 15px; }
+.escolha input, .radio input { width: auto; }
+.radio { display: flex; gap: 18px; margin-top: 6px; } .radio label { display: flex; gap: 6px; align-items: center; }
+.aviso-texto { white-space: pre-wrap; background: #fff; border-radius: 14px; padding: 16px; box-shadow: var(--sombra); margin-bottom: 14px; font-size: 18px; }
+.visor img { display: block; width: 100%; height: auto; }
+.btn-senha { display: block; margin: 26px auto 0; background: none; border: 1px solid var(--linha); border-radius: 12px; padding: 10px 16px; color: var(--suave); }
+.campo-senha { font-size: 24px; letter-spacing: 8px; text-align: center; }
+details summary { cursor: pointer; color: var(--topo); font-weight: 600; margin-top: 6px; }
+[hidden] { display: none !important; }
