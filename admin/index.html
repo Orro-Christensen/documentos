@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex, nofollow">
 <title>Documentos O&amp;C — Administração</title>
 <link rel="icon" href="../img/favicon.png">
-<link rel="stylesheet" href="../estilo.css?v=4">
+<link rel="stylesheet" href="../estilo.css?v=5">
 </head>
 <body>
 <div class="marca"><img src="../img/logo.png" alt="Orro &amp; Christensen"></div>
@@ -25,7 +25,7 @@
 const { post, esc, competencia, dataBR, base64DeBytes, pdfjs, aviso } = App;
 const $ = s => document.querySelector(s);
 const tela = $('#tela');
-let token = null, dados = null, aba = 'enviar';
+let token = null, dados = null, aba = 'enviar', consultaAdm = null;
 
 $('#btnSair').onclick = () => { token = null; dados = null; lotes = []; telaPin(); };
 const fechar = () => $('#modal').innerHTML = '';
@@ -276,16 +276,12 @@ function telaEnviados() {
   const funcDe = mat => (dados.matriculas.find(m => m.matricula === matN(mat)) || {}).funcionario || '';
   const grupos = {};
   dados.documentos.forEach(d => { const k = d.competencia + '|' + d.tipo; (grupos[k] = grupos[k] || []).push(d); });
-  const chaves = Object.keys(grupos).sort().reverse();
-  c.innerHTML = `
-    ${dados.bloqueados.length ? `<div class="cartao" style="border:2px solid var(--perigo)"><b>Acessos bloqueados</b> (10 senhas erradas seguidas)
-      <table>${dados.bloqueados.map(b => `<tr><td>${esc(b.nome)}</td><td class="meta">${esc(dataBR(b.desde))}</td>
-        <td><button class="mini" data-lib="${esc(b.nome)}">Liberar</button></td></tr>`).join('')}</table></div>` : ''}
-    <div class="cartao links">
-      <a href="${esc(dados.pastaUrl)}" target="_blank" rel="noopener">📁 Pasta privada no Drive</a>
-      <a href="${esc(dados.planilhaUrl)}" target="_blank" rel="noopener">🗂️ Planilha de controle</a>
-</div>
-    ${chaves.length ? chaves.map(k => {
+  // Último mês em destaque; os anteriores por escolha de ano/mês (a lista não cresce com os anos).
+  const meses = [...new Set(dados.documentos.map(d => d.competencia))].sort().reverse();
+  if (!consultaAdm || !meses.slice(1).includes(consultaAdm)) consultaAdm = meses[1];
+  const anos = [...new Set(meses.slice(1).map(m => m.slice(0, 4)))];
+  const anoSel = (consultaAdm || '').slice(0, 4);
+  const grupoHTML = comp => Object.keys(grupos).filter(k => k.startsWith(comp + '|')).sort((a, b) => (/\|Holerite$/.test(b) - /\|Holerite$/.test(a)) || a.localeCompare(b)).map(k => {
       const l = grupos[k].sort((a, b) => (funcDe(a.matricula) || a.nomeDoc).localeCompare(funcDe(b.matricula) || b.nomeDoc, 'pt-BR'));
       const vistos = l.filter(d => d.vistoEm).length;
       return `<div class="cartao tabela-rolagem"><div class="titulo" style="margin-top:0">${esc(competencia(l[0].competencia))} · ${esc(l[0].tipo)}
@@ -296,7 +292,23 @@ function telaEnviados() {
           <td>${d.vistoEm ? `<span class="ok">✓ ${esc(dataBR(d.vistoEm))}</span>` : '<span class="nao">ainda não</span>'}</td>
           <td><button class="mini perigo" data-exc="${esc(d.id)}">Excluir</button></td></tr>`).join('')}
         </tbody></table></div>`;
-    }).join('') : '<div class="vazio-msg">Nenhum documento enviado ainda.</div>'}`;
+    }).join('');
+  c.innerHTML = `
+    ${dados.bloqueados.length ? `<div class="cartao" style="border:2px solid var(--perigo)"><b>Acessos bloqueados</b> (10 senhas erradas seguidas)
+      <table>${dados.bloqueados.map(b => `<tr><td>${esc(b.nome)}</td><td class="meta">${esc(dataBR(b.desde))}</td>
+        <td><button class="mini" data-lib="${esc(b.nome)}">Liberar</button></td></tr>`).join('')}</table></div>` : ''}
+    <div class="cartao links">
+      <a href="${esc(dados.pastaUrl)}" target="_blank" rel="noopener">📁 Pasta privada no Drive</a>
+      <a href="${esc(dados.planilhaUrl)}" target="_blank" rel="noopener">🗂️ Planilha de controle</a>
+</div>
+    ${meses.length ? `<div class="titulo">Último mês enviado</div>${grupoHTML(meses[0])}
+      ${meses.length > 1 ? `<div class="titulo">🔎 Meses anteriores</div><div class="cartao">
+        <div class="linha2">
+          <div><label class="campo">Ano</label><select id="selAno">${anos.map(a => `<option${a === anoSel ? ' selected' : ''}>${a}</option>`).join('')}</select></div>
+          <div><label class="campo">Mês</label><select id="selMes">${meses.slice(1).filter(m => m.slice(0, 4) === anoSel).map(m => `<option value="${m}"${m === consultaAdm ? ' selected' : ''}>${App.MESES[+m.slice(5) - 1]}</option>`).join('')}</select></div>
+        </div></div>${grupoHTML(consultaAdm)}` : ''}` : '<div class="vazio-msg">Nenhum documento enviado ainda.</div>'}`;
+  if ($('#selAno')) $('#selAno').onchange = e => { consultaAdm = meses.slice(1).find(m => m.slice(0, 4) === e.target.value); telaEnviados(); };
+  if ($('#selMes')) $('#selMes').onchange = e => { consultaAdm = e.target.value; telaEnviados(); };
   c.querySelectorAll('[data-lib]').forEach(b => b.onclick = async () => {
     try { await chamar({ action: 'adminLiberar', nome: b.dataset.lib }); aviso('Liberado'); await carregar(); } catch (e) { aviso(e.message, true); }
   });
