@@ -113,3 +113,10 @@ textarea { font: inherit; width: 100%; padding: 10px 12px; border: 1px solid var
 .campo-senha { font-size: 24px; letter-spacing: 8px; text-align: center; }
 details summary { cursor: pointer; color: var(--topo); font-weight: 600; margin-top: 6px; }
 [hidden] { display: none !important; }
+
+.passos { padding-left: 22px; margin: 10px 0; } .passos li { margin: 8px 0; }
+.btn-instalar { display: block; width: 100%; margin-top: 18px; background: var(--cartao); color: var(--topo); border: 2px solid var(--topo); border-radius: 14px; padding: 13px; font-weight: 700; font-size: 17px; }
+.consulta { background: var(--cartao); border-radius: var(--raio); box-shadow: var(--sombra); padding: 14px; }
+.consulta .linha2 { margin-bottom: 12px; }
+.consulta select { font-size: 18px; padding: 12px; }
+.consulta .doc { background: #f6f5f1; box-shadow: none; }

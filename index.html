@@ -12,7 +12,7 @@
 <link rel="icon" href="img/favicon.png">
 <link rel="apple-touch-icon" href="img/icone-180.png">
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="estilo.css?v=3">
+<link rel="stylesheet" href="estilo.css?v=4">
 </head>
 <body>
 <div class="marca"><img src="img/logo.png" alt="Orro &amp; Christensen"></div>
@@ -22,10 +22,11 @@
   <button id="btnSair" hidden>Sair</button>
 </header>
 <main id="tela"><div class="carregando">Carregando…</div></main>
+<div id="modal"></div>
 
 <script src="config.js?v=4"></script>
 <script src="lib/pdf.min.js"></script>
-<script src="comum.js?v=3"></script>
+<script src="comum.js?v=5"></script>
 <script>
 const { post, esc, competencia, dataBR, bytesDeBase64, desenharPdf, baixar, aviso } = App;
 const $ = s => document.querySelector(s);
@@ -33,7 +34,8 @@ const tela = $('#tela');
 
 // Sessão só na memória desta página: fechou ou recarregou, pede a senha de novo.
 // Nenhum documento é guardado no aparelho.
-let sessao = null;          // { token, nome, docs }
+let sessao = null;          // { token, nome, docs, avisos }
+let consulta = null;        // mês escolhido em "Consultar outro mês" ('2026-09')
 let nomes = null;
 let estado = { v: 'quem' };
 let inativo;
@@ -48,6 +50,7 @@ $('#btnVoltar').onclick = () => history.back();
 $('#btnSair').onclick = () => sair();
 
 function sair(msg) {
+  consulta = null;
   if (sessao) post({ action: 'sair', token: sessao.token }).catch(() => {});
   sessao = null; clearTimeout(inativo);
   if (msg) aviso(msg, true);
@@ -82,7 +85,9 @@ async function telaQuem() {
   tela.innerHTML = `<div class="titulo">Quem é você?</div>
     ${nomes.length ? `<div class="nomes">${nomes.map(n => `<button class="nome" data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>`
       : '<div class="vazio-msg">Nenhum funcionário cadastrado.</div>'}
+    ${botaoInstalar()}
     <p class="rodape">Seus documentos só aparecem depois da sua senha de 4 números (a mesma do Pede Aí).</p>`;
+  ligarInstalar();
   tela.querySelectorAll('.nome').forEach(b => b.onclick = () => ir({ v: 'senha', nome: b.dataset.n }));
 }
 
@@ -140,16 +145,38 @@ async function telaLista() {
     const atual = docs[0].competencia;
     const doMes = docs.filter(d => d.competencia === atual), antigos = docs.filter(d => d.competencia !== atual);
     h += `<div class="titulo">🧾 Contra-cheques</div><div class="atual"><div class="rotulo">Mês atual</div>
-      <div class="mes">${esc(competencia(atual))}</div>${doMes.map(botaoDoc).join('')}</div>
-      ${antigos.length ? '<div class="titulo">Meses anteriores</div>' + antigos.map(botaoDoc).join('') : ''}`;
+      <div class="mes">${esc(competencia(atual))}</div>${doMes.map(botaoDoc).join('')}</div>`;
+    if (antigos.length) {
+      // Consulta por ano e mês (serve para quem tem anos de empresa).
+      const meses = [...new Set(antigos.map(d => d.competencia))];          // já vem do mais novo ao mais velho
+      if (!consulta || !meses.includes(consulta)) consulta = meses[0];
+      const anos = [...new Set(meses.map(m => m.slice(0, 4)))];
+      const ano = consulta.slice(0, 4);
+      const mesesDoAno = meses.filter(m => m.slice(0, 4) === ano);
+      h += `<div class="titulo">🔎 Consultar outro mês</div><div class="consulta">
+        <div class="linha2">
+          <div><label class="campo">Ano</label><select id="selAno">${anos.map(a => `<option${a === ano ? ' selected' : ''}>${a}</option>`).join('')}</select></div>
+          <div><label class="campo">Mês</label><select id="selMes">${mesesDoAno.map(m => `<option value="${m}"${m === consulta ? ' selected' : ''}>${App.MESES[+m.slice(5) - 1]}</option>`).join('')}</select></div>
+        </div>
+        ${antigos.filter(d => d.competencia === consulta).map(botaoDoc).join('')}</div>`;
+    }
   }
   if (!h) h = '<div class="vazio-msg" style="margin-top:20px">Você ainda não tem documentos nem avisos aqui.</div>';
-  tela.innerHTML = h + `<button class="btn-senha" id="btnTrocar">🔑 Quero trocar minha senha</button>
+  tela.innerHTML = h + `${botaoInstalar()}<button class="btn-senha" id="btnTrocar">🔑 Quero trocar minha senha</button>
     <p class="rodape">Toque no item para abrir. Por segurança, o app sai sozinho depois de 10 minutos parado.</p>`;
   tela.querySelectorAll('[data-id]').forEach(b => b.onclick = () => ir({ v: 'ver', id: b.dataset.id }));
   tela.querySelectorAll('[data-av]').forEach(b => b.onclick = () => ir({ v: 'aviso', id: b.dataset.av }));
   $('#btnTrocar').onclick = () => ir({ v: 'trocar' });
+  if ($('#selAno')) $('#selAno').onchange = e => { consulta = docs.map(d => d.competencia).find(c => c !== docs[0].competencia && c.slice(0, 4) === e.target.value); telaLista(); };
+  if ($('#selMes')) $('#selMes').onchange = e => { consulta = e.target.value; telaLista(); };
+  ligarInstalar();
 }
+
+// Botão de instalação (some quando o app já está instalado e aberto pelo ícone)
+function botaoInstalar() {
+  return App.instalacao.podeMostrar() ? '<button class="btn-instalar" id="btnInstalar">📲 Instalar o app neste celular</button>' : '';
+}
+function ligarInstalar() { if ($('#btnInstalar')) $('#btnInstalar').onclick = () => App.instalacao.instalar('Documentos O&C'); }
 
 // ---------- ver aviso ----------
 async function telaAviso(id) {
