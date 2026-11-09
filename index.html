@@ -23,9 +23,9 @@
 </header>
 <main id="tela"><div class="carregando">Carregando…</div></main>
 
-<script src="config.js?v=2"></script>
+<script src="config.js?v=3"></script>
 <script src="lib/pdf.min.js"></script>
-<script src="comum.js?v=1"></script>
+<script src="comum.js?v=2"></script>
 <script>
 const { post, esc, competencia, dataBR, bytesDeBase64, desenharPdf, baixar, aviso } = App;
 const $ = s => document.querySelector(s);
@@ -72,11 +72,11 @@ function desenhar() {
 
 // ---------- quem é você ----------
 async function telaQuem() {
-  if (!nomes) {
-    tela.innerHTML = '<div class="carregando">Carregando…</div>';
-    try { nomes = (await post({ action: 'funcionarios' })).nomes; }
-    catch (e) { tela.innerHTML = `<div class="vazio-msg">${esc(e.message)}<br><br><button class="btn btn-claro" onclick="location.reload()">Tentar de novo</button></div>`; return; }
-  }
+  // Busca a lista sempre que esta tela abre (quem recebeu documento novo aparece sem recarregar a página).
+  if (!nomes) tela.innerHTML = '<div class="carregando">Carregando…</div>';
+  try { nomes = (await post({ action: 'funcionarios' })).nomes; }
+  catch (e) { if (!nomes) { tela.innerHTML = `<div class="vazio-msg">${esc(e.message)}<br><br><button class="btn btn-claro" onclick="location.reload()">Tentar de novo</button></div>`; return; } }
+  if (sessao || estado.v === 'senha') return;
   tela.innerHTML = `<div class="titulo">Quem é você?</div>
     ${nomes.length ? `<div class="nomes">${nomes.map(n => `<button class="nome" data-n="${esc(n)}">${esc(n)}</button>`).join('')}</div>`
       : '<div class="vazio-msg">Nenhum documento disponível ainda.</div>'}
