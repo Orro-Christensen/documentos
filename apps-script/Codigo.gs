@@ -26,13 +26,16 @@ const NOVO_PIN_ADMIN = '';
 
 const NOME_PASTA = 'Documentos O&C (privado)';
 const NOME_PLANILHA = 'Documentos O&C — controle';
-const ABA = { DOC: 'Documentos', MAT: 'Matriculas', AV: 'Avisos', LEI: 'Leituras' };
+const ABA = { DOC: 'Documentos', MAT: 'Matriculas', AV: 'Avisos', LEI: 'Leituras', IR: 'IR' };
 const CAB = {
   DOC: ['ID', 'Competência', 'Tipo', 'Matrícula', 'Nome no documento', 'Arquivo', 'Enviado em', 'Visto em', 'Vezes visto'],
   MAT: ['Matrícula', 'Nome no documento', 'Funcionário (Pede Aí)'],
   AV:  ['ID', 'Data', 'Título', 'Texto', 'Arquivo', 'Tipo do arquivo', 'Nome do arquivo', 'Destinatários', 'Ativo'],
-  LEI: ['Aviso', 'Funcionário', 'Lido em']
+  LEI: ['Aviso', 'Funcionário', 'Lido em'],
+  IR:  ['Documento', 'Ano', 'Matrícula', 'Dados']   // resumo dos quadros do informe de rendimentos (JSON)
 };
+const TIPO_IR = 'Informe de rendimentos';
+const COMP_OK = /^\d{4}(-\d{2})?$/;   // AAAA-MM (mensal) ou AAAA (informe anual)
 const TZ_ = 'America/Sao_Paulo';
 const SESSAO_FUNC_SEG = 30 * 60;      // funcionário: 30 min
 const SESSAO_ADMIN_SEG = 2 * 3600;    // administração: 2 h
@@ -102,6 +105,7 @@ const agora_ = () => Utilities.formatDate(new Date(), TZ_, "yyyy-MM-dd'T'HH:mm:s
 // e gravado com apóstrofo (texto) na escrita.
 const mat_ = v => String(v ?? '').trim().replace(/^0+(?=\d)/, '');
 const comp_ = v => v instanceof Date ? Utilities.formatDate(v, TZ_, 'yyyy-MM') : String(v ?? '').trim();
+function irDados_() { const o = {}; tabela_(aba_(ABA.IR)).forEach(l => { try { o[String(l['Documento'])] = JSON.parse(l['Dados']); } catch (e) {} }); return o; }
 const txt_ = v => "'" + String(v ?? '');
 
 function funcionariosPedeAi_() {
@@ -241,8 +245,10 @@ function matsDe_(nome) { return new Set(matriculas_().filter(m => m.funcionario 
 
 function meusDocs_(nome) {
   const mats = matsDe_(nome);
+  const ir = irDados_();
   return documentos_().filter(d => mats.has(d.matricula))
-    .map(d => ({ id: d.id, competencia: d.competencia, tipo: d.tipo, enviadoEm: d.enviadoEm, visto: !!d.vistoEm }))
+    .map(d => Object.assign({ id: d.id, competencia: d.competencia, tipo: d.tipo, enviadoEm: d.enviadoEm, visto: !!d.vistoEm },
+      d.tipo === TIPO_IR && ir[d.id] ? { dados: ir[d.id] } : {}))
     .sort((a, b) => (b.competencia + b.enviadoEm).localeCompare(a.competencia + a.enviadoEm));
 }
 
@@ -358,7 +364,7 @@ const limpa_ = s => String(s || '').replace(/[\\/:*?"<>|]+/g, '-').trim();
 
 function adminEnviar_(b) {
   const comp = String(b.competencia || ''), tipo = limpa_(b.tipo), matTxt = String(b.matricula || '').trim(), mat = mat_(matTxt);
-  if (!/^\d{4}-\d{2}$/.test(comp)) throw new Error('Competência inválida (use AAAA-MM)');
+  if (!COMP_OK.test(comp)) throw new Error('Competência inválida (use AAAA-MM, ou AAAA para informe anual)');
   if (!tipo) throw new Error('Informe o tipo de documento');
   if (!/^\d{1,10}$/.test(matTxt)) throw new Error('Matrícula inválida');
   const bytes = Utilities.base64Decode(String(b.base64 || ''));
@@ -385,17 +391,27 @@ function adminEnviar_(b) {
   if (antigo) {
     try { DriveApp.getFileById(antigo.arquivo).setTrashed(true); } catch (e) {}
     sh.getRange(antigo.linha, 1, 1, CAB.DOC.length).setValues([[antigo.id].concat(linha)]);
+    salvarIr_(antigo.id, comp, matTxt, b.dados);
     return { ok: true, id: antigo.id, substituido: true };
   }
   const id = Utilities.getUuid().slice(0, 13);
   sh.appendRow([id].concat(linha));
+  salvarIr_(id, comp, matTxt, b.dados);
   return { ok: true, id };
+}
+
+/** Resumo dos quadros do informe de rendimentos (mostrado ao funcionário junto com o PDF). */
+function salvarIr_(id, comp, mat, dados) {
+  if (!dados) return;
+  const sh = aba_(ABA.IR), l = tabela_(sh).find(x => String(x['Documento']) === id);
+  const linha = [id, txt_(comp), txt_(mat), JSON.stringify(dados)];
+  if (l) sh.getRange(l._linha, 1, 1, 4).setValues([linha]); else sh.appendRow(linha);
 }
 
 /** Guarda o PDF original da contabilidade na pasta da competência (reenvio substitui). */
 function adminOriginal_(b) {
   const comp = String(b.competencia || '');
-  if (!/^\d{4}-\d{2}$/.test(comp)) throw new Error('Competência inválida');
+  if (!COMP_OK.test(comp)) throw new Error('Competência inválida');
   const bytes = Utilities.base64Decode(String(b.base64 || ''));
   const nome = comp + ' ' + limpa_(b.tipo) + ' - original - ' + limpa_(b.nomeArquivo || 'arquivo.pdf');
   const pasta = subpasta_(comp), it = pasta.getFilesByName(nome);
@@ -409,6 +425,8 @@ function adminExcluir_(b) {
   if (!d) throw new Error('Documento não encontrado');
   try { DriveApp.getFileById(d.arquivo).setTrashed(true); } catch (e) {}
   aba_(ABA.DOC).deleteRow(d.linha);
+  const shI = aba_(ABA.IR), l = tabela_(shI).find(x => String(x['Documento']) === d.id);
+  if (l) shI.deleteRow(l._linha);
   return { ok: true };
 }
 

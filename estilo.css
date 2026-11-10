@@ -120,3 +120,11 @@ details summary { cursor: pointer; color: var(--topo); font-weight: 600; margin-
 .consulta .linha2 { margin-bottom: 12px; }
 .consulta select { font-size: 18px; padding: 12px; }
 .consulta .doc { background: #f6f5f1; box-shadow: none; }
+
+/* informe de rendimentos */
+.ir-resumo { background: var(--cartao); border-radius: var(--raio); box-shadow: var(--sombra); padding: 14px; margin-bottom: 4px; }
+.ir-fonte { display: flex; flex-direction: column; gap: 2px; padding-bottom: 10px; border-bottom: 1px solid var(--linha); }
+.ir-quadro { margin-top: 12px; }
+.ir-q { font-size: 13px; font-weight: 700; color: var(--suave); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
+.ir-linha { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px dashed var(--linha); font-size: 16px; }
+.ir-linha b { white-space: nowrap; }

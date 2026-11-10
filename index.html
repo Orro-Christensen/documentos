@@ -12,7 +12,7 @@
 <link rel="icon" href="img/favicon.png">
 <link rel="apple-touch-icon" href="img/icone-180.png">
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="estilo.css?v=5">
+<link rel="stylesheet" href="estilo.css?v=6">
 </head>
 <body>
 <div class="marca"><img src="img/logo.png" alt="Orro &amp; Christensen"></div>
@@ -123,9 +123,12 @@ function telaSenha(nome) {
 
 // ---------- lista ----------
 const icone = t => /f[ée]rias/i.test(t) ? '🏖️' : /13/.test(t) ? '🎁' : /informe|rendimento/i.test(t) ? '📊' : '🧾';
+const TIPO_IR = 'Informe de rendimentos';
+const ehIR = d => d.tipo === TIPO_IR;
+const quando = d => ehIR(d) ? `Ano-calendário ${d.competencia} · declaração ${+d.competencia + 1}` : competencia(d.competencia);
 function botaoDoc(d) {
   return `<button class="doc" data-id="${esc(d.id)}"><span class="ic">${icone(d.tipo)}</span>
-    <span class="txt"><b>${esc(d.tipo)}</b><span class="meta">${esc(competencia(d.competencia))}</span></span>
+    <span class="txt"><b>${esc(d.tipo)}</b><span class="meta">${esc(quando(d))}</span></span>
     ${d.visto ? '' : '<span class="selo">NOVO</span>'}<span class="seta">›</span></button>`;
 }
 function botaoAviso(a) {
@@ -134,7 +137,7 @@ function botaoAviso(a) {
     ${a.lido ? '' : '<span class="selo">NOVO</span>'}<span class="seta">›</span></button>`;
 }
 async function telaLista() {
-  const docs = sessao.docs || [], avisos = sessao.avisos || [];
+  const docs = (sessao.docs || []).filter(d => !ehIR(d)), informes = (sessao.docs || []).filter(ehIR), avisos = sessao.avisos || [];
   let h = '';
   if (avisos.length) {
     const novos = avisos.filter(a => !a.lido), lidos = avisos.filter(a => a.lido);
@@ -160,6 +163,9 @@ async function telaLista() {
         </div>
         ${antigos.filter(d => d.competencia === consulta).map(botaoDoc).join('')}</div>`;
     }
+  }
+  if (informes.length) {
+    h += `<div class="titulo">📊 Imposto de Renda</div>${informes.slice().sort((a, b) => b.competencia.localeCompare(a.competencia)).map(botaoDoc).join('')}`;
   }
   if (!h) h = '<div class="vazio-msg" style="margin-top:20px">Você ainda não tem documentos nem avisos aqui.</div>';
   tela.innerHTML = h + `${botaoInstalar()}<button class="btn-senha" id="btnTrocar">🔑 Quero trocar minha senha</button>
@@ -231,11 +237,25 @@ function telaTrocar() {
   };
 }
 
+// ---------- resumo do informe de rendimentos (o que vai na declaração) ----------
+const QUADROS_IR = { 3: 'Rendimentos tributáveis (ficha "Rendimentos tributáveis recebidos de PJ")',
+  4: 'Rendimentos isentos e não tributáveis', 5: 'Rendimentos sujeitos à tributação exclusiva', 6: 'Rendimentos recebidos acumuladamente' };
+function resumoIR(x) {
+  const por = {}; (x.linhas || []).forEach(l => (por[l.quadro] = por[l.quadro] || []).push(l));
+  return `<div class="ir-resumo">
+    <div class="ir-fonte"><span class="meta">Fonte pagadora</span><b>${esc(x.fonte || '')}</b><span>CNPJ ${esc(x.cnpj || '')}</span></div>
+    ${Object.keys(por).sort().map(q => `<div class="ir-quadro"><div class="ir-q">Quadro ${q} · ${esc(QUADROS_IR[q] || '')}</div>
+      ${por[q].map(l => `<div class="ir-linha"><span>${esc(l.item)}. ${esc(l.descricao)}</span><b>R$ ${esc(l.valor)}</b></div>`).join('')}</div>`).join('')}
+    ${x.complementares ? `<div class="ir-quadro"><div class="ir-q">Quadro 7 · Informações complementares</div><div class="meta">${esc(x.complementares)}</div></div>` : ''}
+    <p class="meta" style="margin:10px 2px 0">Itens que não aparecem estão zerados. Na dúvida, vale o PDF abaixo.</p></div>`;
+}
+
 // ---------- ver documento ----------
 async function telaVer(id) {
   const d = (sessao.docs || []).find(x => x.id === id);
   if (!d) return ir({ v: 'lista' }, true);
-  tela.innerHTML = `<div class="titulo">${esc(d.tipo)} · ${esc(competencia(d.competencia))}</div>
+  tela.innerHTML = `<div class="titulo">${esc(d.tipo)} · ${esc(quando(d))}</div>
+    ${d.dados ? resumoIR(d.dados) : ''}
     <div class="acoes"><button class="btn btn-ok" id="btnBaixar" disabled>⬇ Baixar PDF</button></div>
     <div class="visor" id="visor"><div class="carregando">Abrindo documento…</div></div>`;
   try {

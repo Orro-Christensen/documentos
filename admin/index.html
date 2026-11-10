@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="../img/icone-admin-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Docs Admin">
-<link rel="stylesheet" href="../estilo.css?v=5">
+<link rel="stylesheet" href="../estilo.css?v=6">
 </head>
 <body>
 <div class="marca"><img src="../img/logo.png" alt="Orro &amp; Christensen"></div>
@@ -26,6 +26,7 @@
 <script src="../lib/pdf-lib.min.js"></script>
 <script src="../lib/qrcode.js"></script>
 <script src="../comum.js?v=5"></script>
+<script src="../irpf.js?v=1"></script>
 <script>
 const { post, esc, competencia, dataBR, base64DeBytes, pdfjs, aviso } = App;
 const $ = s => document.querySelector(s);
@@ -106,10 +107,11 @@ function desenhar() {
   tela.innerHTML = `<div class="abas">
       <button data-a="enviar" class="${aba === 'enviar' ? 'on' : ''}">🧾 Holerites</button>
       <button data-a="avisos" class="${aba === 'avisos' ? 'on' : ''}">📢 Avisos</button>
+      <button data-a="ir" class="${aba === 'ir' ? 'on' : ''}">📊 Imposto de Renda</button>
       <button data-a="enviados" class="${aba === 'enviados' ? 'on' : ''}">📋 Enviados e vistos</button></div>
     <div id="conteudo"></div>`;
   tela.querySelectorAll('.abas button').forEach(b => b.onclick = () => { aba = b.dataset.a; desenhar(); });
-  if (aba === 'enviar') telaEnviar(); else if (aba === 'avisos') telaAvisos(); else telaEnviados();
+  if (aba === 'enviar') telaEnviar(); else if (aba === 'avisos') telaAvisos(); else if (aba === 'ir') telaIR(); else telaEnviados();
 }
 
 // ---------- leitura do PDF da contabilidade ----------
@@ -284,9 +286,10 @@ function telaEnviados() {
   const c = $('#conteudo');
   const funcDe = mat => (dados.matriculas.find(m => m.matricula === matN(mat)) || {}).funcionario || '';
   const grupos = {};
-  dados.documentos.forEach(d => { const k = d.competencia + '|' + d.tipo; (grupos[k] = grupos[k] || []).push(d); });
+  const mensais = dados.documentos.filter(d => d.competencia.length === 7);
+  mensais.forEach(d => { const k = d.competencia + '|' + d.tipo; (grupos[k] = grupos[k] || []).push(d); });
   // Último mês em destaque; os anteriores por escolha de ano/mês (a lista não cresce com os anos).
-  const meses = [...new Set(dados.documentos.map(d => d.competencia))].sort().reverse();
+  const meses = [...new Set(mensais.map(d => d.competencia))].sort().reverse();
   if (!consultaAdm || !meses.slice(1).includes(consultaAdm)) consultaAdm = meses[1];
   const anos = [...new Set(meses.slice(1).map(m => m.slice(0, 4)))];
   const anoSel = (consultaAdm || '').slice(0, 4);
@@ -392,6 +395,119 @@ function telaAvisos() {
     if (!confirm('Arquivar este aviso? Ele some do app dos funcionários (o registro continua na planilha).')) return;
     try { await chamar({ action: 'adminArquivarAviso', id: b.dataset.arq }); aviso('Arquivado'); await carregar(); } catch (e) { aviso(e.message, true); }
   });
+}
+
+// ---------- aba Imposto de Renda (informe de rendimentos anual) ----------
+const TIPO_IR = 'Informe de rendimentos';
+let ir = null;   // { nomeArquivo, bytes, ano, pessoas:[...] }
+// Liga a pessoa do informe ao funcionário: 1º nome completo igual ao dos holerites; 2º matrícula do complemento; 3º nome parecido.
+function ligarIR(p) {
+  const alvo = sem(p.nome).join(' ');
+  let m = dados.matriculas.find(x => sem(x.nomeDoc).join(' ') === alvo) || (p.matricula && dados.matriculas.find(x => x.matricula === matN(p.matricula)));
+  p.matricula = m ? m.matricula.padStart(5, '0') : (p.matricula ? p.matricula.padStart(5, '0') : '');
+  p.funcionario = m && dados.funcionarios.includes(m.funcionario) ? m.funcionario : sugerir(p.matricula, p.nome);
+  p.enviar = !!(p.funcionario && p.matricula);
+}
+function telaIR() {
+  const c = $('#conteudo');
+  const docsIR = dados.documentos.filter(d => d.tipo === TIPO_IR);
+  const anos = [...new Set(docsIR.map(d => d.competencia))].sort().reverse();
+  const funcDe = mat => (dados.matriculas.find(m => m.matricula === matN(mat)) || {}).funcionario || '';
+  const status = anos.map(a => {
+    const l = docsIR.filter(d => d.competencia === a).sort((x, y) => (funcDe(x.matricula) || x.nomeDoc).localeCompare(funcDe(y.matricula) || y.nomeDoc, 'pt-BR'));
+    return `<div class="cartao tabela-rolagem"><div class="titulo" style="margin-top:0">Ano-calendário ${esc(a)} (declaração ${+a + 1})
+        <span class="meta" style="text-transform:none">— ${l.filter(d => d.vistoEm).length} de ${l.length} vistos</span></div>
+      <table><thead><tr><th>Funcionário</th><th>Matrícula</th><th>Enviado</th><th>Visto pelo funcionário</th><th></th></tr></thead><tbody>
+      ${l.map(d => `<tr><td>${esc(funcDe(d.matricula) || '(sem vínculo)')}<div class="meta">${esc(d.nomeDoc)}</div></td><td>${esc(d.matricula.padStart(5, '0'))}</td>
+        <td class="meta">${esc(dataBR(d.enviadoEm))}</td><td>${d.vistoEm ? `<span class="ok">✓ ${esc(dataBR(d.vistoEm))}</span>` : '<span class="nao">ainda não</span>'}</td>
+        <td><button class="mini perigo" data-exc="${esc(d.id)}">Excluir</button></td></tr>`).join('')}</tbody></table></div>`;
+  }).join('');
+  if (!ir) {
+    c.innerHTML = `<label class="arquivo"><input type="file" id="arqIR" accept="application/pdf,.pdf">
+        <div style="font-size:34px">📊</div><b>Escolher o PDF do Comprovante de Rendimentos (IRRF)</b>
+        <div class="meta">O arquivo que a contabilidade manda uma vez por ano, com todos os funcionários. Ele é separado por pessoa aqui no navegador.</div></label>
+      ${status ? '<div class="titulo">Informes enviados</div>' + status : ''}`;
+    $('#arqIR').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      c.innerHTML = '<div class="carregando">Lendo o comprovante…</div>';
+      try {
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        const r = await IRPF.lerInforme(bytes);
+        if (!r.pessoas.length) throw new Error('não encontrei nenhum comprovante de rendimentos neste PDF');
+        r.pessoas.forEach(ligarIR);
+        ir = { nomeArquivo: f.name, bytes, ano: r.pessoas[0].ano, pessoas: r.pessoas };
+      } catch (err) { aviso('Não consegui ler o PDF: ' + err.message, true); ir = null; }
+      telaIR();
+    };
+    ligarExcluir(c);
+    return;
+  }
+  const opcoes = sel => '<option value="">— escolher —</option>' + dados.funcionarios.map(f => `<option${f === sel ? ' selected' : ''}>${esc(f)}</option>`).join('');
+  const ja = p => docsIR.some(d => d.competencia === ir.ano && d.matricula === matN(p.matricula));
+  const n = ir.pessoas.filter(p => p.enviar).length, falta = ir.pessoas.filter(p => !p.enviar).length;
+  c.innerHTML = `<div class="cartao"><b>${esc(ir.nomeArquivo)}</b> · ${ir.pessoas.length} pessoa(s)
+      <div class="linha2"><div><label class="campo">Ano-calendário</label><input id="irAno" inputmode="numeric" maxlength="4" value="${esc(ir.ano)}"></div>
+        <div><label class="campo">Fonte pagadora</label><input value="${esc((ir.pessoas[0].fonte || '') + ' ' + (ir.pessoas[0].cnpj || ''))}" disabled></div></div></div>
+    <div class="cartao tabela-rolagem"><table>
+      <thead><tr><th></th><th>Pág.</th><th>Nome no informe</th><th>Matrícula</th><th>Funcionário (Pede Aí)</th><th style="text-align:right">Rend. tributáveis</th><th></th></tr></thead>
+      <tbody>${ir.pessoas.map((p, i) => {
+        const tot = (p.linhas.find(l => l.quadro === 3 && l.item === '1') || {}).valor || '—';
+        return `<tr class="${p.enviar ? '' : 'falta'}"><td><input type="checkbox" class="irChk" data-i="${i}" ${p.enviar ? 'checked' : ''} style="width:auto"></td>
+          <td>${p.paginas.join('+')}</td><td>${esc(p.nome)}</td>
+          <td><input class="irMat" data-i="${i}" value="${esc(p.matricula)}" style="width:80px" placeholder="?"></td>
+          <td><select class="irFunc" data-i="${i}">${opcoes(p.funcionario)}</select></td>
+          <td style="text-align:right">${esc(tot)}</td><td>${ja(p) ? '<span class="meta">substitui</span>' : ''}</td></tr>`;
+      }).join('')}</tbody></table></div>
+    <div class="meta" id="resumo">${falta ? falta + ' pessoa(s) sem funcionário (linhas em laranja: ex-funcionários ou não cadastrados no Pede Aí) não serão enviadas.' : ''}</div>
+    <div class="progresso" id="prog" hidden><div></div></div>
+    <div class="acoes"><button class="btn btn-claro" id="irCancelar">Cancelar</button><button class="btn btn-ok" id="irEnviar" ${n ? '' : 'disabled'}>Enviar ${n} informe(s)</button></div>`;
+  const P = x => ir.pessoas[x.dataset.i];
+  $('#irAno').onchange = e => { ir.ano = e.target.value.trim(); telaIR(); };
+  c.querySelectorAll('.irChk').forEach(x => x.onchange = () => { const p = P(x); p.enviar = x.checked && !!p.funcionario && !!p.matricula; telaIR(); });
+  c.querySelectorAll('.irFunc').forEach(x => x.onchange = () => {
+    const p = P(x); p.funcionario = x.value;
+    if (!p.matricula) { const m = dados.matriculas.find(k => k.funcionario === p.funcionario); if (m) p.matricula = m.matricula.padStart(5, '0'); }
+    p.enviar = !!(p.funcionario && p.matricula); telaIR(); });
+  c.querySelectorAll('.irMat').forEach(x => x.onchange = () => { const p = P(x); p.matricula = x.value.trim(); p.enviar = !!(p.funcionario && p.matricula); telaIR(); });
+  $('#irCancelar').onclick = () => { ir = null; telaIR(); };
+  $('#irEnviar').onclick = enviarIR;
+}
+function ligarExcluir(c) {
+  c.querySelectorAll('[data-exc]').forEach(b => b.onclick = async () => {
+    if (!confirm('Excluir este documento? O arquivo vai para a lixeira do Drive.')) return;
+    try { await chamar({ action: 'adminExcluir', id: b.dataset.exc }); aviso('Excluído'); await carregar(); } catch (e) { aviso(e.message, true); }
+  });
+}
+async function enviarIR() {
+  if (!/^\d{4}$/.test(ir.ano)) return aviso('Confira o ano-calendário (4 números)', true);
+  const lista = ir.pessoas.filter(p => p.enviar);
+  const rep = lista.map(p => matN(p.matricula)).find((m, i, a) => a.indexOf(m) !== i);
+  if (rep) return aviso('A matrícula ' + rep + ' aparece em mais de uma pessoa.', true);
+  if (!confirm(`Enviar ${lista.length} informe(s) de rendimentos do ano-calendário ${ir.ano}?`)) return;
+  $('#irEnviar').disabled = true; $('#irCancelar').disabled = true;
+  const prog = $('#prog'); prog.hidden = false;
+  const barra = k => prog.firstElementChild.style.width = Math.round(100 * k / (lista.length + 1)) + '%';
+  const { PDFDocument } = window.PDFLib;
+  let feitos = 0;
+  try {
+    const original = await PDFDocument.load(ir.bytes);
+    await chamar({ action: 'adminOriginal', competencia: ir.ano, tipo: TIPO_IR, nomeArquivo: ir.nomeArquivo, base64: base64DeBytes(ir.bytes) }, 120000);
+    barra(1);
+    for (const p of lista) {
+      const novo = await PDFDocument.create();
+      (await novo.copyPages(original, p.paginas.map(n => n - 1))).forEach(pg => novo.addPage(pg));
+      $('#resumo').textContent = `Enviando ${feitos + 1} de ${lista.length}: ${p.funcionario}…`;
+      await chamar({ action: 'adminEnviar', competencia: ir.ano, tipo: TIPO_IR, matricula: p.matricula, nomeDoc: p.nome, funcionario: p.funcionario,
+        base64: base64DeBytes(await novo.save()),
+        dados: { ano: ir.ano, fonte: p.fonte, cnpj: p.cnpj, linhas: p.linhas, complementares: p.complementares || '' } }, 60000);
+      p.enviar = false; feitos++; barra(feitos + 1);
+    }
+    aviso(`${feitos} informe(s) enviados.`);
+    ir = null; await carregar();
+  } catch (e) {
+    aviso('Erro no envio: ' + e.message + ` — ${feitos} já foram. Clique em Enviar de novo para continuar.`, true);
+    telaIR();
+  }
 }
 
 telaPin();

@@ -45,6 +45,10 @@ Enviou errado? Mandar o mesmo mês e tipo de novo **substitui** o arquivo daquel
 
 **Funcionário novo:** cadastre primeiro na aba **Funcionarios** da planilha do Pede Aí (nome, Ativo = SIM, senha de 4 números). Depois ele aparece na lista para ser ligado à matrícula.
 
+## 2b. Imposto de Renda (informe de rendimentos, uma vez por ano)
+
+Aba **📊 Imposto de Renda** → escolha o PDF do "Comprovante de Rendimentos Pagos e de IRRF" que a contabilidade manda (todos os funcionários num arquivo só). O site separa as páginas de cada pessoa (comprovante + complemento), liga ao funcionário pelo nome completo dos holerites e mostra o total de rendimentos para conferência. Ex-funcionários ficam em laranja e não são enviados. O funcionário vê, na seção **📊 Imposto de Renda** do app, um resumo com o que vai na declaração (fonte pagadora, CNPJ e os valores de cada quadro) e o PDF completo.
+
 ## 3. Avisos (segurança, feriados, comunicados)
 
 Na administração, aba **📢 Avisos**: título, texto, anexo opcional (PDF ou foto; foto é reduzida automaticamente) e para quem: **todos** ou funcionários escolhidos. O aviso aparece no topo do app com o selo **NOVO**. Em "Ver quem leu" aparece quem já abriu e quem ainda não. **Arquivar** tira o aviso do app (o registro continua na planilha).
