@@ -51,7 +51,7 @@ Aba **📊 Imposto de Renda** → escolha o PDF do "Comprovante de Rendimentos P
 
 ## 3. Avisos (segurança, feriados, comunicados)
 
-Na administração, aba **📢 Avisos**: título, texto, anexo opcional (PDF ou foto; foto é reduzida automaticamente) e para quem: **todos** ou funcionários escolhidos. O aviso aparece no topo do app com o selo **NOVO**. Em "Ver quem leu" aparece quem já abriu e quem ainda não. **Arquivar** tira o aviso do app (o registro continua na planilha).
+Na administração, aba **📢 Avisos**: título, texto, anexo opcional (PDF ou foto; foto é reduzida automaticamente) e para quem: **todos** ou funcionários escolhidos. O aviso aparece no topo do app com o selo **NOVO**. Em "Ver quem leu" aparece quem já abriu e quem ainda não. **🗑 Excluir** apaga o aviso de vez (some do app dos funcionários e da administração; o anexo vai para a lixeira do Drive).
 
 ## 4. Troca de senha pelo funcionário
 

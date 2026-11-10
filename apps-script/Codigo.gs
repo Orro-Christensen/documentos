@@ -163,6 +163,7 @@ function doPost(e) {
       case 'adminExcluir': sessaoAdmin_(b.token); return json_(adminExcluir_(b));
       case 'adminAviso':   sessaoAdmin_(b.token); return json_(adminAviso_(b));
       case 'adminArquivarAviso': sessaoAdmin_(b.token); return json_(adminArquivarAviso_(b));
+      case 'adminExcluirAviso': sessaoAdmin_(b.token); return json_(adminExcluirAviso_(b));
       case 'adminLiberar': sessaoAdmin_(b.token); liberar_(b.nome); return json_({ ok: true });
       default: return json_({ erro: 'Ação desconhecida' });
     }
@@ -308,6 +309,18 @@ function adminArquivarAviso_(b) {
   const a = avisos_().find(x => x.id === String(b.id));
   if (!a) throw new Error('Aviso não encontrado');
   aba_(ABA.AV).getRange(a.linha, CAB.AV.indexOf('Ativo') + 1).setValue('NÃO');
+  return { ok: true };
+}
+
+/** Apaga o aviso de vez: some do app dos funcionários e da administração; o anexo vai para a lixeira do Drive
+ *  e o registro de quem leu é apagado junto. */
+function adminExcluirAviso_(b) {
+  const a = avisos_().find(x => x.id === String(b.id));
+  if (!a) throw new Error('Aviso não encontrado');
+  if (a.arquivo) { try { DriveApp.getFileById(a.arquivo).setTrashed(true); } catch (e) {} }
+  const shL = aba_(ABA.LEI);
+  tabela_(shL).filter(l => String(l['Aviso']) === a.id).map(l => l._linha).sort((x, y) => y - x).forEach(n => shL.deleteRow(n));
+  aba_(ABA.AV).deleteRow(a.linha);
   return { ok: true };
 }
 

@@ -362,7 +362,7 @@ function telaAvisos() {
       const leram = new Set(a.leram.map(l => l.nome)), faltam = a.para.filter(n => !leram.has(n));
       return `<div class="cartao"><div style="display:flex;gap:10px;align-items:flex-start">
           <div style="flex:1"><b>${esc(a.titulo)}</b><div class="meta">${esc(dataBR(a.data))} · ${a.todos ? 'todos' : esc(a.para.length + ' funcionário(s)')}${a.anexo ? ' · 📎 ' + esc(a.anexo) : ''}</div></div>
-          <button class="mini perigo" data-arq="${esc(a.id)}">Arquivar</button></div>
+          <button class="mini perigo" data-avexc="${esc(a.id)}">🗑 Excluir</button></div>
         ${a.texto ? `<div class="meta" style="white-space:pre-wrap;margin-top:8px">${esc(a.texto.length > 220 ? a.texto.slice(0, 220) + '…' : a.texto)}</div>` : ''}
         <div style="margin-top:8px"><span class="ok">Lido por ${a.leram.length} de ${a.para.length}</span></div>
         <details><summary>Ver quem leu</summary>
@@ -391,9 +391,11 @@ function telaAvisos() {
       anexo = null; aviso('Aviso publicado'); await carregar();
     } catch (e) { aviso(e.message, true); $('#avEnviar').disabled = false; $('#avEnviar').textContent = '📢 Publicar aviso'; }
   };
-  c.querySelectorAll('[data-arq]').forEach(b => b.onclick = async () => {
-    if (!confirm('Arquivar este aviso? Ele some do app dos funcionários (o registro continua na planilha).')) return;
-    try { await chamar({ action: 'adminArquivarAviso', id: b.dataset.arq }); aviso('Arquivado'); await carregar(); } catch (e) { aviso(e.message, true); }
+  c.querySelectorAll('[data-avexc]').forEach(b => b.onclick = async () => {
+    const a = dados.avisos.find(x => x.id === b.dataset.avexc);
+    if (!confirm(`Excluir o aviso "${a ? a.titulo : ''}"?\n\nEle some do app dos funcionários e daqui. O anexo vai para a lixeira do Drive e o registro de quem leu é apagado. Não dá para desfazer.`)) return;
+    b.disabled = true;
+    try { await chamar({ action: 'adminExcluirAviso', id: b.dataset.avexc }); aviso('Aviso excluído'); await carregar(); } catch (e) { aviso(e.message, true); b.disabled = false; }
   });
 }
 
