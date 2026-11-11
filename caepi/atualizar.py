@@ -4,7 +4,7 @@ Saída: caepi/ca/<grupo>.json, com grupo = número do CA // 1000.
 Cada arquivo: {"<CA>": ["validade dd/mm/aaaa", "situação", "equipamento", "fabricante"]}.
 Também grava caepi/info.json com a data da atualização.
 """
-import csv, gzip, io, json, os, re, sys, tarfile, zipfile, datetime, collections
+import csv, gzip, zlib, io, json, os, re, sys, tarfile, zipfile, datetime, collections
 import requests
 
 URL = 'https://caepi.trabalho.gov.br/internet/consultacainternet.aspx'
@@ -24,7 +24,8 @@ def baixar():
 
 def ler(conteudo):
     if conteudo[:2] == b'\x1f\x8b':
-        conteudo = gzip.decompress(conteudo)
+        d = zlib.decompressobj(16 + zlib.MAX_WBITS)   # ignora o lixo que o site põe depois do gzip
+        conteudo = d.decompress(conteudo) + d.flush()
         print('gzip ->', len(conteudo), 'bytes')
     if len(conteudo) > 262 and conteudo[257:262] == b'ustar':
         t = tarfile.open(fileobj=io.BytesIO(conteudo))
