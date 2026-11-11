@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="../img/icone-admin-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Docs Admin">
-<link rel="stylesheet" href="../estilo.css?v=6">
+<link rel="stylesheet" href="../estilo.css?v=7">
 </head>
 <body>
 <div class="marca"><img src="../img/logo.png" alt="Orro &amp; Christensen"></div>
@@ -27,13 +27,14 @@
 <script src="../lib/qrcode.js"></script>
 <script src="../comum.js?v=5"></script>
 <script src="../irpf.js?v=1"></script>
+<script src="../ficha.js?v=1"></script>
 <script>
 const { post, esc, competencia, dataBR, base64DeBytes, pdfjs, aviso } = App;
 const $ = s => document.querySelector(s);
 const tela = $('#tela');
 let token = null, dados = null, aba = 'enviar', consultaAdm = null;
 
-$('#btnSair').onclick = () => { token = null; dados = null; lotes = []; telaPin(); };
+$('#btnSair').onclick = () => { token = null; dados = null; lotes = []; cad = null; cadImp = null; telaPin(); };
 const fechar = () => $('#modal').innerHTML = '';
 // Instalar a administração como app (ícone próprio "DOCS ADMIN", separado do app dos funcionários)
 const mostrarInstalar = () => { $('#btnInstalar').hidden = !App.instalacao.podeMostrar(); };
@@ -108,10 +109,11 @@ function desenhar() {
       <button data-a="enviar" class="${aba === 'enviar' ? 'on' : ''}">🧾 Holerites</button>
       <button data-a="avisos" class="${aba === 'avisos' ? 'on' : ''}">📢 Avisos</button>
       <button data-a="ir" class="${aba === 'ir' ? 'on' : ''}">📊 Imposto de Renda</button>
+      <button data-a="cad" class="${aba === 'cad' ? 'on' : ''}">👷 Funcionários</button>
       <button data-a="enviados" class="${aba === 'enviados' ? 'on' : ''}">📋 Enviados e vistos</button></div>
     <div id="conteudo"></div>`;
   tela.querySelectorAll('.abas button').forEach(b => b.onclick = () => { aba = b.dataset.a; desenhar(); });
-  if (aba === 'enviar') telaEnviar(); else if (aba === 'avisos') telaAvisos(); else if (aba === 'ir') telaIR(); else telaEnviados();
+  if (aba === 'enviar') telaEnviar(); else if (aba === 'avisos') telaAvisos(); else if (aba === 'ir') telaIR(); else if (aba === 'cad') telaCad(); else telaEnviados();
 }
 
 // ---------- leitura do PDF da contabilidade ----------
@@ -510,6 +512,185 @@ async function enviarIR() {
     aviso('Erro no envio: ' + e.message + ` — ${feitos} já foram. Clique em Enviar de novo para continuar.`, true);
     telaIR();
   }
+}
+
+// ---------- aba Funcionários (cadastro, só na administração) ----------
+const SECOES = [
+  { t: '🪪 Identificação', c: [['nome', 'Nome completo', 2], ['sexo', 'Sexo'], ['nascimento', 'Data de nascimento'], ['nasc_local', 'Local de nascimento'], ['nasc_uf', 'UF nasc.'],
+    ['estado_civil', 'Estado civil'], ['conjuge', 'Cônjuge', 2], ['pai', 'Pai', 2], ['mae', 'Mãe', 2], ['raca', 'Raça/cor'], ['deficiencia', 'Deficiência']] },
+  { t: '📞 Contato e endereço', c: [['celular', 'Celular'], ['fone', 'Telefone'], ['email', 'E-mail', 2], ['endereco', 'Endereço', 2], ['bairro', 'Bairro'],
+    ['cidade', 'Cidade'], ['uf', 'UF'], ['cep', 'CEP'], ['emergencia_nome', 'Contato de emergência'], ['emergencia_fone', 'Fone de emergência']] },
+  { t: '💼 Contrato', c: [['cargo', 'Cargo/função'], ['cbo', 'CBO'], ['local', 'Local'], ['admissao', 'Admissão'], ['cargo_desde', 'No cargo desde'], ['tipo_contrato', 'Tipo de contrato'],
+    ['experiencia_fim', 'Fim da experiência'], ['salario', 'Salário (R$)'], ['salario_desde', 'Salário desde'], ['salario_motivo', 'Motivo do último reajuste'],
+    ['sindicato', 'Sindicato', 2], ['demissao', 'Data de demissão'], ['historico_salarios', 'Histórico de salários', 3, 'area'], ['ferias', 'Férias', 3, 'area']] },
+  { t: '📄 Documentos', c: [['cpf', 'CPF'], ['rg', 'RG'], ['rg_emissor', 'Órgão emissor'], ['rg_uf', 'UF do RG'], ['rg_emissao', 'Emissão do RG'], ['pis', 'PIS'],
+    ['ctps', 'CTPS nº'], ['ctps_serie', 'CTPS série'], ['ctps_uf', 'CTPS UF'], ['ctps_data', 'CTPS emissão'], ['cnh', 'CNH'], ['cnh_categoria', 'CNH categoria'],
+    ['cnh_validade', 'CNH validade'], ['titulo', 'Título de eleitor'], ['titulo_zona', 'Zona'], ['titulo_secao', 'Seção'], ['reservista', 'Reservista'], ['matricula_esocial', 'Matrícula eSocial']] },
+  { t: '🏦 Banco (pagamento)', c: [['banco', 'Código do banco'], ['agencia', 'Agência'], ['conta', 'Conta']] },
+  { t: '🩺 Saúde (para emergência)', c: [['tipo_sanguineo', 'Tipo sanguíneo'], ['alergias', 'Alergias', 2], ['doencas', 'Doenças/condições', 3, 'area']] },
+  { t: '📝 Observações', c: [['observacoes', 'Observações', 3, 'area']] }
+];
+const ROTULO = {}; SECOES.forEach(s => s.c.forEach(c => ROTULO[c[0]] = c[1])); ROTULO.cadastro = 'Cadastro';
+let cad = null, cadVista = { v: 'lista', busca: '', desligados: false }, cadImp = null;
+
+async function carregarCad() {
+  $('#conteudo').innerHTML = '<div class="carregando">Carregando cadastro…</div>';
+  cad = (await chamar({ action: 'cadLista' })).funcionarios;
+}
+async function telaCad() {
+  try { if (!cad) await carregarCad(); } catch (e) { $('#conteudo').innerHTML = `<div class="vazio-msg">${esc(e.message)}</div>`; return; }
+  if (cadVista.v === 'ver' || cadVista.v === 'editar' || cadVista.v === 'novo') return telaCadFicha();
+  if (cadVista.v === 'importar') return telaCadImportar();
+  const c = $('#conteudo');
+  const q = sem(cadVista.busca).join(' ');
+  const lista = cad.filter(f => (cadVista.desligados || !f.demissao) &&
+    (!q || sem([f.nome, f.pedeAi, f.cargo, f.matricula, f.cidade].join(' ')).join(' ').includes(q)));
+  const desl = cad.filter(f => f.demissao).length;
+  c.innerHTML = `<div class="cartao">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <input id="cadBusca" placeholder="🔎 Buscar por nome, cargo, matrícula ou cidade" value="${esc(cadVista.busca)}" style="flex:1;min-width:220px">
+        <button class="mini" id="cadNovo">➕ Novo funcionário</button><button class="mini" id="cadImp">⬆ Importar fichas (PDF)</button></div>
+      ${desl ? `<label class="meta" style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="cadDesl" style="width:auto" ${cadVista.desligados ? 'checked' : ''}> Mostrar desligados (${desl})</label>` : ''}
+    </div>
+    ${cad.length ? `<div class="cartao tabela-rolagem"><table class="tab-cad">
+      <thead><tr><th>Nome</th><th>Matrícula</th><th>Cargo</th><th>Admissão</th><th>Celular</th></tr></thead>
+      <tbody>${lista.map(f => `<tr data-m="${esc(f.matricula)}" style="cursor:pointer">
+        <td><b>${esc(f.nome)}</b>${f.pedeAi ? `<div class="meta">Pede Aí: ${esc(f.pedeAi)}</div>` : ''}${f.demissao ? '<div class="meta" style="color:var(--perigo)">Desligado em ' + esc(f.demissao) + '</div>' : ''}</td>
+        <td>${esc(f.matricula)}</td><td>${esc(f.cargo || '')}</td><td>${esc(f.admissao || '')}</td><td>${esc(f.celular || '') || '<span class="nao">—</span>'}</td></tr>`).join('')}</tbody>
+      </table>${!lista.length ? '<p class="meta">Nenhum funcionário encontrado.</p>' : ''}</div>
+      <p class="meta">${lista.length} de ${cad.length} funcionário(s). Toque no nome para ver a ficha.</p>`
+    : '<div class="vazio-msg">Nenhum funcionário cadastrado. Use <b>⬆ Importar fichas (PDF)</b> com a ficha de registro que a contabilidade manda, ou <b>➕ Novo funcionário</b>.</div>'}`;
+  const b = $('#cadBusca');
+  b.oninput = () => { cadVista.busca = b.value; const pos = b.selectionStart; telaCad().then(() => { const n = $('#cadBusca'); n.focus(); n.setSelectionRange(pos, pos); }); };
+  if ($('#cadDesl')) $('#cadDesl').onchange = e => { cadVista.desligados = e.target.checked; telaCad(); };
+  c.querySelectorAll('tr[data-m]').forEach(tr => tr.onclick = () => { cadVista = Object.assign(cadVista, { v: 'ver', m: tr.dataset.m, alt: null }); telaCad(); });
+  $('#cadNovo').onclick = () => { cadVista = Object.assign(cadVista, { v: 'novo', m: null }); telaCad(); };
+  $('#cadImp').onclick = () => { cadVista.v = 'importar'; cadImp = null; telaCad(); };
+}
+
+function telaCadFicha() {
+  const c = $('#conteudo');
+  const novo = cadVista.v === 'novo', editar = novo || cadVista.v === 'editar';
+  const f = novo ? {} : cad.find(x => x.matricula === cadVista.m);
+  if (!f) { cadVista.v = 'lista'; return telaCad(); }
+  const val = k => f[k] || '';
+  const celula = ([k, rot, larg, tipo]) => `<div class="cad-campo" style="grid-column:span ${larg || 1}"><label>${esc(rot)}</label>${editar
+      ? (tipo === 'area' ? `<textarea data-k="${k}" rows="3">${esc(val(k))}</textarea>` : `<input data-k="${k}" value="${esc(val(k))}">`)
+      : `<div class="cad-valor${tipo === 'area' ? ' area' : ''}">${val(k) ? esc(tipo === 'area' ? val(k).split(' | ').join('\n') : val(k)) : '<span class="nao">—</span>'}</div>`}</div>`;
+  c.innerHTML = `<div class="cartao cad-topo">
+      <button class="mini" id="cadVoltar">‹ Voltar à lista</button>
+      <div style="flex:1;min-width:200px"><div style="font-size:20px;font-weight:700">${esc(novo ? 'Novo funcionário' : f.nome)}</div>
+        ${novo ? '' : `<div class="meta">Matrícula ${esc(f.matricula)}${f.cargo ? ' · ' + esc(f.cargo) : ''}${f.pedeAi ? ' · Pede Aí: ' + esc(f.pedeAi) : ''}${f.atualizado_em ? ' · atualizado em ' + esc(dataBR(f.atualizado_em)) : ''}</div>`}</div>
+      ${editar ? '<button class="btn btn-claro" id="cadCancelar" style="flex:none">Cancelar</button><button class="btn btn-ok" id="cadSalvar" style="flex:none">💾 Salvar</button>'
+        : `${f.temFicha ? '<button class="mini" id="cadPdf">📄 Ficha completa (PDF)</button>' : ''}<button class="btn btn-ok" id="cadEditar" style="flex:none">✏️ Editar</button>`}
+    </div>
+    ${novo ? `<div class="cartao"><div class="cad-grade"><div class="cad-campo"><label>Matrícula (número da folha)</label><input id="cadMat" inputmode="numeric" placeholder="ex.: 00079"></div></div></div>` : ''}
+    ${SECOES.map(sec => `<div class="cartao"><div class="titulo" style="margin-top:0">${sec.t}</div><div class="cad-grade">${sec.c.map(celula).join('')}</div></div>`).join('')}
+    ${novo ? '' : `<details class="cartao" id="cadAlt"><summary>🕓 Histórico de alterações${f.alteracoes ? ' (' + f.alteracoes + ')' : ''}</summary><div id="cadAltLista" class="meta" style="margin-top:8px">Carregando…</div></details>`}
+    <div id="cadPdfVisor"></div>`;
+  $('#cadVoltar').onclick = () => { if (editar && !confirm('Sair sem salvar?')) return; cadVista.v = 'lista'; telaCad(); };
+  if (editar) {
+    $('#cadCancelar').onclick = () => { cadVista.v = novo ? 'lista' : 'ver'; telaCad(); };
+    $('#cadSalvar').onclick = async () => {
+      const dados = {};
+      c.querySelectorAll('[data-k]').forEach(i => { const k = i.dataset.k, v = i.value.trim(); if (novo ? v : v !== (f[k] || '')) dados[k] = v; });
+      const mat = novo ? $('#cadMat').value.trim() : f.matricula;
+      if (novo && !/^\d{1,10}$/.test(mat)) return aviso('Informe a matrícula (só números)', true);
+      if (!dados.nome && novo) return aviso('Informe o nome', true);
+      if (!novo && !Object.keys(dados).length) { cadVista.v = 'ver'; return telaCad(); }
+      $('#cadSalvar').disabled = true;
+      try {
+        const r = await chamar({ action: 'cadSalvar', matricula: mat, dados, novo });
+        aviso(novo ? 'Funcionário cadastrado' : `${r.alterados} campo(s) alterado(s)`);
+        await carregarCad(); cadVista = Object.assign(cadVista, { v: 'ver', m: r.matricula }); telaCad();
+      } catch (e) { aviso(e.message, true); $('#cadSalvar').disabled = false; }
+    };
+  } else {
+    $('#cadEditar').onclick = () => { cadVista.v = 'editar'; telaCad(); };
+    if ($('#cadPdf')) $('#cadPdf').onclick = async () => {
+      const v = $('#cadPdfVisor'); v.innerHTML = '<div class="carregando">Abrindo a ficha…</div>';
+      try {
+        const r = await chamar({ action: 'cadFicha', matricula: f.matricula });
+        const u8 = App.bytesDeBase64(r.base64);
+        v.innerHTML = `<div class="acoes"><button class="btn btn-ok" id="cadBaixar">⬇ Baixar ficha</button></div><div class="visor" id="cadVisor"></div>`;
+        $('#cadBaixar').onclick = () => App.baixar(u8, r.nomeArquivo);
+        await App.desenharPdf(u8, $('#cadVisor')); v.scrollIntoView({ behavior: 'smooth' });
+      } catch (e) { v.innerHTML = `<div class="vazio-msg">${esc(e.message)}</div>`; }
+    };
+    $('#cadAlt').ontoggle = async e => {
+      if (!e.target.open || cadVista.alt) return;
+      try {
+        cadVista.alt = (await chamar({ action: 'cadVer', matricula: f.matricula })).alteracoes;
+        $('#cadAltLista').innerHTML = cadVista.alt.length ? `<table><thead><tr><th>Quando</th><th>Campo</th><th>De</th><th>Para</th><th>Origem</th></tr></thead><tbody>
+          ${cadVista.alt.map(a => `<tr><td>${esc(dataBR(a.em))}</td><td>${esc(ROTULO[a.campo] || a.campo)}</td><td>${esc(a.de) || '—'}</td><td>${esc(a.para) || '—'}</td><td>${esc(a.origem)}</td></tr>`).join('')}</tbody></table>` : 'Nenhuma alteração registrada.';
+      } catch (err) { $('#cadAltLista').textContent = err.message; }
+    };
+  }
+}
+
+function telaCadImportar() {
+  const c = $('#conteudo');
+  const voltar = '<button class="mini" id="cadVoltar">‹ Voltar à lista</button>';
+  if (!cadImp) {
+    c.innerHTML = `<div class="cartao">${voltar}</div>
+      <label class="arquivo"><input type="file" id="arqFicha" accept="application/pdf,.pdf">
+        <div style="font-size:34px">👷</div><b>Escolher o PDF da Ficha de Registro de Empregado</b>
+        <div class="meta">O relatório da contabilidade com a ficha de todos os funcionários. É lido aqui no navegador; os dados e a ficha de cada um vão para a pasta privada.</div></label>
+      <p class="meta">Importar de novo atualiza só o que veio preenchido no PDF: telefone, contato de emergência e outros campos preenchidos à mão não são apagados. Toda mudança fica no histórico de alterações.</p>`;
+    $('#cadVoltar').onclick = () => { cadVista.v = 'lista'; telaCad(); };
+    $('#arqFicha').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      c.innerHTML = '<div class="carregando">Lendo as fichas…</div>';
+      try {
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        const r = await FICHA.lerFichas(bytes);
+        if (!r.pessoas.length) throw new Error('não encontrei nenhuma ficha de registro neste PDF');
+        r.pessoas.forEach(p => {
+          p.mat = String(p.codigo || '').padStart(5, '0');
+          const atual = cad.find(x => matN(x.matricula) === matN(p.mat));
+          const dados = {}; Object.keys(ROTULO).concat(['nome']).forEach(k => { if (p[k]) dados[k] = p[k]; });
+          p.dados = dados;
+          p.muda = atual ? Object.keys(dados).filter(k => dados[k] !== (atual[k] || '')).length : null;
+          p.enviar = !!p.codigo && (p.muda === null || p.muda > 0);
+        });
+        cadImp = { nomeArquivo: f.name, bytes, pessoas: r.pessoas };
+      } catch (err) { aviso('Não consegui ler o PDF: ' + err.message, true); cadImp = null; }
+      telaCadImportar();
+    };
+    return;
+  }
+  const n = cadImp.pessoas.filter(p => p.enviar).length;
+  c.innerHTML = `<div class="cartao">${voltar} <b style="margin-left:8px">${esc(cadImp.nomeArquivo)}</b> · ${cadImp.pessoas.length} ficha(s)</div>
+    <div class="cartao tabela-rolagem"><table><thead><tr><th></th><th>Págs.</th><th>Matrícula</th><th>Nome</th><th>Cargo</th><th>Situação</th></tr></thead><tbody>
+      ${cadImp.pessoas.map((p, i) => `<tr><td><input type="checkbox" class="fiChk" data-i="${i}" ${p.enviar ? 'checked' : ''} style="width:auto"></td>
+        <td>${p.paginas[0]}–${p.paginas[p.paginas.length - 1]}</td><td>${esc(p.mat)}</td><td>${esc(p.nome)}</td><td>${esc(p.cargo || '')}</td>
+        <td>${p.muda === null ? '<span class="ok">novo</span>' : p.muda ? `atualiza ${p.muda} campo(s)` : '<span class="nao">sem mudança</span>'}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="meta" id="resumo"></div><div class="progresso" id="prog" hidden><div></div></div>
+    <div class="acoes"><button class="btn btn-claro" id="fiCancelar">Cancelar</button><button class="btn btn-ok" id="fiEnviar" ${n ? '' : 'disabled'}>Importar ${n} ficha(s)</button></div>`;
+  $('#cadVoltar').onclick = () => { cadVista.v = 'lista'; cadImp = null; telaCad(); };
+  $('#fiCancelar').onclick = () => { cadImp = null; telaCadImportar(); };
+  c.querySelectorAll('.fiChk').forEach(x => x.onchange = () => { cadImp.pessoas[x.dataset.i].enviar = x.checked; telaCadImportar(); });
+  $('#fiEnviar').onclick = async () => {
+    const lista = cadImp.pessoas.filter(p => p.enviar);
+    if (!confirm(`Importar ${lista.length} ficha(s)?`)) return;
+    $('#fiEnviar').disabled = true; $('#fiCancelar').disabled = true;
+    const prog = $('#prog'); prog.hidden = false;
+    const { PDFDocument } = window.PDFLib;
+    let k = 0;
+    try {
+      const original = await PDFDocument.load(cadImp.bytes);
+      for (const p of lista) {
+        const novo = await PDFDocument.create();
+        (await novo.copyPages(original, p.paginas.map(n => n - 1))).forEach(pg => novo.addPage(pg));
+        $('#resumo').textContent = `Importando ${k + 1} de ${lista.length}: ${p.nome}…`;
+        await chamar({ action: 'cadImportar', matricula: p.mat, dados: p.dados, base64: base64DeBytes(await novo.save()) }, 60000);
+        p.enviar = false; k++; prog.firstElementChild.style.width = Math.round(100 * k / lista.length) + '%';
+      }
+      aviso(`${k} ficha(s) importadas.`);
+      cadImp = null; await carregarCad(); cadVista.v = 'lista'; telaCad();
+    } catch (e) { aviso('Erro: ' + e.message + ` — ${k} já foram. Clique em Importar de novo para continuar.`, true); telaCadImportar(); }
+  };
 }
 
 telaPin();

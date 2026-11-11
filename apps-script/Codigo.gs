@@ -165,6 +165,11 @@ function doPost(e) {
       case 'adminArquivarAviso': sessaoAdmin_(b.token); return json_(adminArquivarAviso_(b));
       case 'adminExcluirAviso': sessaoAdmin_(b.token); return json_(adminExcluirAviso_(b));
       case 'adminLiberar': sessaoAdmin_(b.token); liberar_(b.nome); return json_({ ok: true });
+      case 'cadLista':     sessaoAdmin_(b.token); return json_(cadLista_());
+      case 'cadVer':       sessaoAdmin_(b.token); return json_(cadVer_(b));
+      case 'cadSalvar':    sessaoAdmin_(b.token); return json_(cadSalvar_(b.matricula, b.dados, 'manual', b.novo));
+      case 'cadImportar':  sessaoAdmin_(b.token); return json_(cadImportar_(b));
+      case 'cadFicha':     sessaoAdmin_(b.token); return json_(cadFicha_(b));
       default: return json_({ erro: 'Ação desconhecida' });
     }
   } catch (err) {
@@ -456,6 +461,116 @@ function avisarDono_(assunto, texto) {
 
 function json_(o) {
   return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
+}
+
+// ---------- Cadastro de funcionários (só administração) ----------
+// Aba "Cadastro": uma linha por funcionário; a 1ª linha tem as chaves dos campos (colunas criadas sob demanda).
+// Aba "Alteracoes": registro de cada campo alterado (quando, matrícula, campo, de, para, origem).
+const CAD = 'Cadastro', ALT = 'Alteracoes';
+const CAD_FIXOS = ['matricula', 'nome', 'atualizado_em', 'arquivo_ficha'];
+
+function abaCad_() {
+  const ss = planilha_();
+  let sh = ss.getSheetByName(CAD);
+  if (!sh) {
+    sh = ss.insertSheet(CAD);
+    sh.getRange(1, 1, 1, CAD_FIXOS.length).setValues([CAD_FIXOS]).setFontWeight('bold').setBackground('#2f3b4c').setFontColor('#ffffff');
+    sh.setFrozenRows(1); sh.setFrozenColumns(2);
+  }
+  return sh;
+}
+function abaAlt_() {
+  const ss = planilha_();
+  let sh = ss.getSheetByName(ALT);
+  if (!sh) {
+    sh = ss.insertSheet(ALT);
+    sh.getRange(1, 1, 1, 6).setValues([['Quando', 'Matrícula', 'Campo', 'De', 'Para', 'Origem']]).setFontWeight('bold').setBackground('#2f3b4c').setFontColor('#ffffff');
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+function cadTabela_() {
+  const sh = abaCad_(), v = sh.getDataRange().getValues(), cab = (v.shift() || []).map(String);
+  const linhas = v.map((l, i) => { const o = { _linha: i + 2 }; cab.forEach((c, j) => { if (c) o[c] = texto_(l[j]); }); return o; })
+    .filter(o => o.matricula);
+  linhas.forEach(o => o.matricula = mat_(o.matricula).padStart(5, '0'));
+  return { sh, cab, linhas };
+}
+const chaveOk_ = k => /^[a-z][a-z0-9_]{0,40}$/.test(k);
+
+function cadLista_() {
+  const { linhas } = cadTabela_();
+  const mats = {}; matriculas_().forEach(m => mats[m.matricula] = m.funcionario);
+  const alt = {}; tabela_(abaAlt_()).forEach(a => { const m = mat_(a['Matrícula']); alt[m] = (alt[m] || 0) + 1; });
+  return {
+    funcionarios: linhas.map(o => { const r = Object.assign({}, o); delete r._linha; r.pedeAi = mats[mat_(o.matricula)] || ''; r.alteracoes = alt[mat_(o.matricula)] || 0; r.temFicha = !!o.arquivo_ficha; delete r.arquivo_ficha; return r; })
+      .sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'))
+  };
+}
+
+function cadVer_(b) {
+  const m = mat_(b.matricula);
+  return { alteracoes: tabela_(abaAlt_()).filter(a => mat_(a['Matrícula']) === m)
+    .map(a => ({ em: texto_(a['Quando']), campo: String(a['Campo']), de: String(a['De']), para: String(a['Para']), origem: String(a['Origem']) }))
+    .sort((x, y) => y.em.localeCompare(x.em)).slice(0, 200) };
+}
+
+/** Grava os campos informados. origem 'manual' grava tudo o que veio (inclusive apagar);
+ *  'importação' só grava valores não vazios (não apaga o que foi preenchido à mão). */
+function cadSalvar_(matricula, dados, origem, novo) {
+  const matTxt = String(matricula || '').trim();
+  if (!/^\d{1,10}$/.test(matTxt)) throw new Error('Matrícula inválida');
+  const mat = matTxt.padStart(5, '0');
+  dados = dados || {};
+  let { sh, cab, linhas } = cadTabela_();
+  let atual = linhas.find(o => mat_(o.matricula) === mat_(mat));
+  if (novo && atual) throw new Error('Já existe funcionário com a matrícula ' + mat);
+  if (!atual && !String(dados.nome || '').trim()) throw new Error('Informe o nome');
+  // colunas novas
+  const novas = Object.keys(dados).filter(k => chaveOk_(k) && cab.indexOf(k) < 0);
+  if (novas.length) {
+    sh.getRange(1, cab.length + 1, 1, novas.length).setValues([novas]).setFontWeight('bold').setBackground('#2f3b4c').setFontColor('#ffffff');
+    cab = cab.concat(novas);
+  }
+  const linha = atual ? atual._linha : sh.getLastRow() + 1;
+  const antes = atual || {};
+  const quando = agora_(), log = [];
+  if (!atual) {
+    sh.getRange(linha, 1).setValue(txt_(mat));
+    log.push([quando, txt_(mat), 'cadastro', '', 'criado', origem]);
+  }
+  Object.keys(dados).forEach(k => {
+    if (!chaveOk_(k) || k === 'matricula' || k === 'atualizado_em' || k === 'arquivo_ficha') return;
+    const v = String(dados[k] ?? '').trim().slice(0, 2000);
+    const de = String(antes[k] ?? '');
+    if (origem !== 'manual' && !v) return;
+    if (v === de) return;
+    sh.getRange(linha, cab.indexOf(k) + 1).setValue(txt_(v));
+    if (atual) log.push([quando, txt_(mat), k, txt_(de), txt_(v), origem]);
+  });
+  sh.getRange(linha, cab.indexOf('atualizado_em') + 1).setValue(quando);
+  if (log.length) { const a = abaAlt_(); a.getRange(a.getLastRow() + 1, 1, log.length, 6).setValues(log); }
+  return { ok: true, matricula: mat, alterados: atual ? log.length : 0, criado: !atual };
+}
+
+function cadImportar_(b) {
+  const r = cadSalvar_(b.matricula, b.dados, 'importação');
+  if (b.base64) {
+    const mat = String(b.matricula).padStart(5, '0');
+    const pasta = subpasta_('Fichas'), nome = 'Ficha ' + mat + '.pdf';
+    const it = pasta.getFilesByName(nome); while (it.hasNext()) it.next().setTrashed(true);
+    const arq = pasta.createFile(Utilities.newBlob(Utilities.base64Decode(String(b.base64)), 'application/pdf', nome));
+    const { sh, cab, linhas } = cadTabela_();
+    const o = linhas.find(x => mat_(x.matricula) === mat_(mat));
+    sh.getRange(o._linha, cab.indexOf('arquivo_ficha') + 1).setValue(arq.getId());
+  }
+  return r;
+}
+
+function cadFicha_(b) {
+  const o = cadTabela_().linhas.find(x => mat_(x.matricula) === mat_(b.matricula));
+  if (!o || !o.arquivo_ficha) throw new Error('Ficha em PDF não encontrada');
+  return { nomeArquivo: 'Ficha ' + o.matricula + ' ' + (o.nome || '') + '.pdf', base64: Utilities.base64Encode(DriveApp.getFileById(o.arquivo_ficha).getBlob().getBytes()) };
 }
 
 // ---------- Manutenção (rodar pelo editor) ----------

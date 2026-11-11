@@ -49,6 +49,10 @@ Enviou errado? Mandar o mesmo mês e tipo de novo **substitui** o arquivo daquel
 
 Aba **📊 Imposto de Renda** → escolha o PDF do "Comprovante de Rendimentos Pagos e de IRRF" que a contabilidade manda (todos os funcionários num arquivo só). O site separa as páginas de cada pessoa (comprovante + complemento), liga ao funcionário pelo nome completo dos holerites e mostra o total de rendimentos para conferência. Ex-funcionários ficam em laranja e não são enviados. O funcionário vê, na seção **📊 Imposto de Renda** do app, um resumo com o que vai na declaração (fonte pagadora, CNPJ e os valores de cada quadro) e o PDF completo.
 
+## 2c. Cadastro de funcionários (só na administração)
+
+Aba **👷 Funcionários**: lista com busca (nome, cargo, matrícula, cidade). Tocando no nome abre a ficha por seções (identificação, contato, contrato, documentos, banco, saúde, observações), com **✏️ Editar**, **📄 Ficha completa (PDF)** e o **histórico de alterações** (quem mudou o quê e quando). **⬆ Importar fichas (PDF)** lê a "Ficha de Registro de Empregado" da contabilidade; importar de novo só atualiza o que veio preenchido no PDF e não apaga o que foi digitado à mão. **➕ Novo funcionário** cadastra manualmente. Os dados ficam nas abas **Cadastro** e **Alteracoes** da planilha de controle (privada) e a ficha em PDF na subpasta **Fichas**. Nada disso aparece no app dos funcionários.
+
 ## 3. Avisos (segurança, feriados, comunicados)
 
 Na administração, aba **📢 Avisos**: título, texto, anexo opcional (PDF ou foto; foto é reduzida automaticamente) e para quem: **todos** ou funcionários escolhidos. O aviso aparece no topo do app com o selo **NOVO**. Em "Ver quem leu" aparece quem já abriu e quem ainda não. **🗑 Excluir** apaga o aviso de vez (some do app dos funcionários e da administração; o anexo vai para a lixeira do Drive).

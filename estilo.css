@@ -128,3 +128,15 @@ details summary { cursor: pointer; color: var(--topo); font-weight: 600; margin-
 .ir-q { font-size: 13px; font-weight: 700; color: var(--suave); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
 .ir-linha { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px dashed var(--linha); font-size: 16px; }
 .ir-linha b { white-space: nowrap; }
+
+/* cadastro de funcionários (administração) */
+.cad-topo { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.cad-grade { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; }
+@media (max-width: 700px) { .cad-grade { grid-template-columns: 1fr; } .cad-campo { grid-column: span 1 !important; } }
+.cad-campo label { display: block; font-size: 13px; color: var(--suave); margin-bottom: 2px; }
+.cad-valor { font-size: 16px; padding: 4px 0; border-bottom: 1px dashed var(--linha); min-height: 28px; word-break: break-word; }
+.cad-valor.area { white-space: pre-wrap; font-size: 15px; }
+.cad-campo textarea { min-height: 70px; }
+.tab-cad tbody tr:hover { background: #f6f5f1; }
+details.cartao summary { font-weight: 600; }
+.abas { flex-wrap: wrap; } .abas button { min-width: 140px; }
