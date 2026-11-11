@@ -4,7 +4,7 @@ Saída: caepi/ca/<grupo>.json, com grupo = número do CA // 1000.
 Cada arquivo: {"<CA>": ["validade dd/mm/aaaa", "situação", "equipamento", "fabricante"]}.
 Também grava caepi/info.json com a data da atualização.
 """
-import csv, io, json, os, re, sys, zipfile, datetime, collections
+import csv, gzip, io, json, os, re, sys, tarfile, zipfile, datetime, collections
 import requests
 
 URL = 'https://caepi.trabalho.gov.br/internet/consultacainternet.aspx'
@@ -23,16 +23,27 @@ def baixar():
     return r.content
 
 def ler(conteudo):
+    if conteudo[:2] == b'\x1f\x8b':
+        conteudo = gzip.decompress(conteudo)
+        print('gzip ->', len(conteudo), 'bytes')
+    if len(conteudo) > 262 and conteudo[257:262] == b'ustar':
+        t = tarfile.open(fileobj=io.BytesIO(conteudo))
+        m = [x for x in t.getmembers() if x.isfile()][0]
+        print('arquivo no tar:', m.name)
+        conteudo = t.extractfile(m).read()
     if conteudo[:2] == b'PK':
         z = zipfile.ZipFile(io.BytesIO(conteudo))
         nome = z.namelist()[0]
         print('arquivo no zip:', nome)
         conteudo = z.read(nome)
-    texto = conteudo.decode('cp1252', errors='replace')
+    try:
+        texto = conteudo.decode('utf-8')
+    except UnicodeDecodeError:
+        texto = conteudo.decode('cp1252', errors='replace')
     primeira = texto.split('\n', 1)[0]
     sep = max([';', '|', '\t', ','], key=primeira.count)
     print('separador:', repr(sep), '| cabeçalho:', primeira[:400])
-    return list(csv.reader(io.StringIO(texto), delimiter=sep))
+    return list(csv.reader(io.StringIO(texto, newline=''), delimiter=sep))
 
 def coluna(cab, *nomes):
     n = [c.strip().upper() for c in cab]
