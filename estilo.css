@@ -140,3 +140,23 @@ details summary { cursor: pointer; color: var(--topo); font-weight: 600; margin-
 .tab-cad tbody tr:hover { background: #f6f5f1; }
 details.cartao summary { font-weight: 600; }
 .abas { flex-wrap: wrap; } .abas button { min-width: 140px; }
+
+/* ---------- EPI ---------- */
+.sub-abas { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.sub-abas button { border: 1px solid var(--linha); background: var(--cartao); border-radius: 99px; padding: 7px 14px; font-size: 15px; }
+.sub-abas button.on { background: var(--topo); color: #fff; border-color: var(--topo); }
+.epi-selo { display: inline-block; border-radius: 99px; padding: 2px 9px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.epi-selo.ok { background: #e3f4e5; color: #1d6b2c; }
+.epi-selo.alerta { background: #fff1d6; color: #8a5a00; }
+.epi-selo.erro { background: #fde4e4; color: #a32020; }
+.epi-selo.nao { background: #eceae4; color: var(--suave); }
+.epi-aviso { background: #f6f5f1; font-size: 15px; }
+.epi-botoes { display: flex; gap: 6px; flex-wrap: wrap; }
+.epi-tam { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; font-size: 15px; color: var(--suave); }
+.epi-tam label { display: flex; gap: 4px; align-items: center; }
+.epi-tam input { width: 64px; padding: 6px; }
+.epi-rec { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px dashed var(--linha); }
+.epi-rec:last-child { border-bottom: 0; }
+.epi-rec .tx { flex: 1; min-width: 220px; }
+.epi-cat input, .epi-ent input, .epi-ent select { padding: 6px 8px; font-size: 15px; }
+.epi-mat th { font-size: 13px; white-space: normal; min-width: 80px; }

@@ -170,6 +170,15 @@ function doPost(e) {
       case 'cadSalvar':    sessaoAdmin_(b.token); return json_(cadSalvar_(b.matricula, b.dados, 'manual', b.novo));
       case 'cadImportar':  sessaoAdmin_(b.token); return json_(cadImportar_(b));
       case 'cadFicha':     sessaoAdmin_(b.token); return json_(cadFicha_(b));
+      case 'epiDados':     sessaoAdmin_(b.token); return json_(epiDados_());
+      case 'epiCatalogo':  sessaoAdmin_(b.token); return json_(epiSalvarCatalogo_(b));
+      case 'epiMatriz':    sessaoAdmin_(b.token); return json_(epiSalvarMatriz_(b));
+      case 'epiEntregar':  sessaoAdmin_(b.token); return json_(epiEntregar_(b));
+      case 'epiAnexar':    sessaoAdmin_(b.token); return json_(epiAnexar_(b));
+      case 'epiAnexo':     sessaoAdmin_(b.token); return json_(epiAbrirAnexo_(b));
+      case 'epiExcluir':   sessaoAdmin_(b.token); return json_(epiExcluirRecibo_(b));
+      case 'epiTamanhos':  sessaoAdmin_(b.token); return json_(epiTamanhos_(b));
+      case 'epiConferirCA':sessaoAdmin_(b.token); return json_(verificarCAs());
       default: return json_({ erro: 'Ação desconhecida' });
     }
   } catch (err) {
@@ -631,4 +640,246 @@ function corrigirNome() {
   });
   ['falhas_', 'bloq_'].forEach(k => { const v = props_().getProperty(k + de); if (v) { props_().setProperty(k + para, v); props_().deleteProperty(k + de); } });
   Logger.log('"' + de + '" → "' + para + '": ' + n + ' célula(s) alteradas.');
+}
+
+// ---------- EPI: catálogo, matriz por cargo, entregas e recibos (só administração) ----------
+// Abas: EPI_Catalogo, EPI_Matriz, EPI_Entregas, EPI_Recibos. Anexos (recibos assinados e fichas antigas) na subpasta "EPI".
+const EPI = {
+  CAT: ['Código', 'Ativo', 'EPI', 'CA', 'Validade CA', 'Situação CA', 'Troca (dias)', 'Observação', 'CA conferido em'],
+  MAT: ['Cargo', 'Códigos', 'Observação'],
+  ENT: ['ID', 'Data', 'Matrícula', 'Nome', 'Código', 'EPI', 'CA', 'Qtd', 'Motivo', 'Recibo', 'Registrado em', 'Situação'],
+  REC: ['Recibo', 'Tipo', 'Data', 'Matrícula', 'Nome', 'Itens', 'Arquivo', 'Tipo do arquivo', 'Anexado em', 'Observação', 'Situação']
+};
+const ABA_EPI = { CAT: 'EPI_Catalogo', MAT: 'EPI_Matriz', ENT: 'EPI_Entregas', REC: 'EPI_Recibos' };
+const MATRIZ_OBS = "PGR 10/2025 + itens novos (aguardando revisão da Doctor's)";
+const EPI_SEED = [
+  ['EPI-008', 'SIM', 'Botina de segurança com biqueira', '3151', '', '', 180, 'CA dos laudos (bota com bico de PVC) - vencido em 21/08/2025'],
+  ['EPI-002', 'SIM', 'Óculos de proteção incolor', '10346', '', '', 90, ''],
+  ['EPI-005', 'SIM', 'Protetor facial (face shield)', '', '', '', 180, ''],
+  ['EPI-018', 'SIM', 'Viseira de reposição para protetor facial', '', '', '', 0, 'Peça de reposição do EPI-005'],
+  ['EPI-004', 'SIM', 'Protetor auricular tipo plug', '19578', '', '', 30, ''],
+  ['EPI-003', 'SIM', 'Protetor auricular tipo concha', '', '', '', 180, 'Fora da matriz do PGR'],
+  ['EPI-006', 'SIM', 'Respirador PFF2', '', '', '', 7, 'Substitui a PFF1 do PGR'],
+  ['EPI-007', 'SIM', 'Respirador semifacial com filtro químico', '33596', '', '', 365, 'CA do respirador usado na amostragem (Alltec)'],
+  ['EPI-015', 'SIM', 'Cartucho químico para vapores orgânicos', '', '', '', 30, ''],
+  ['EPI-016', 'SIM', 'Pré-filtro P2 com retentor', '', '', '', 7, ''],
+  ['EPI-013', 'SIM', 'Luva de vaqueta ou anticorte', '', '', '', 30, 'Substitui a luva de algodão do PGR'],
+  ['EPI-011', 'SIM', 'Luva de algodão', '', '', '', 15, 'Está no PGR; substituída pela EPI-013'],
+  ['EPI-001', 'SIM', 'Luva nitrílica reutilizável', '', '', '', 30, 'Substitui a luva de látex do PGR'],
+  ['EPI-014', 'SIM', 'Luva nitrílica descartável', '', '', '', 0, 'Descartável: sem prazo de troca'],
+  ['EPI-017', 'SIM', 'Macacão descartável para pintura', '', '', '', 0, 'Descartável: sem prazo de troca'],
+  ['EPI-012', 'SIM', 'Creme protetor para as mãos', '', '', '', 0, ''],
+];
+const PRODUCAO_ = 'EPI-008, EPI-002, EPI-005, EPI-004, EPI-006, EPI-013';
+const MATRIZ_SEED = [
+  ['Ajudante Geral', PRODUCAO_ + ', EPI-014', MATRIZ_OBS],
+  ['Marceneiro', PRODUCAO_ + ', EPI-014', MATRIZ_OBS],
+  ['1/2 Oficial marceneiro', PRODUCAO_ + ', EPI-014', MATRIZ_OBS],
+  ['Operador de CNC', PRODUCAO_, MATRIZ_OBS],
+  ['Pintor Serv Correlatos', 'EPI-008, EPI-002, EPI-004, EPI-006, EPI-007, EPI-015, EPI-016, EPI-001, EPI-017, EPI-012', MATRIZ_OBS],
+  ['Motorista', 'EPI-008, EPI-004, EPI-013', MATRIZ_OBS],
+];
+
+/** Cria as abas do EPI com o catálogo e a matriz iniciais. Não apaga nada se já existirem. */
+function configurarEPI() {
+  const ss = planilha_();
+  const novo = (nome, cab, linhas) => {
+    if (ss.getSheetByName(nome)) return false;
+    const sh = criarAba_(ss, nome, cab);
+    if (linhas.length) sh.getRange(2, 1, linhas.length, cab.length).setValues(linhas.map(l => cab.map((_, i) => l[i] ?? '')));
+    sh.autoResizeColumns(1, cab.length);
+    return true;
+  };
+  const a = novo(ABA_EPI.CAT, EPI.CAT, EPI_SEED.map(l => l.map((v, i) => i === 3 && v ? "'" + v : v)));
+  const b = novo(ABA_EPI.MAT, EPI.MAT, MATRIZ_SEED);
+  novo(ABA_EPI.ENT, EPI.ENT, []); novo(ABA_EPI.REC, EPI.REC, []);
+  subpasta_('EPI');
+  Logger.log('EPI pronto. Catálogo ' + (a ? 'criado' : 'já existia') + '; matriz ' + (b ? 'criada' : 'já existia') + '.');
+}
+
+const abaEpi_ = k => criarAba_(planilha_(), ABA_EPI[k], EPI[k]);
+const dia_ = v => v instanceof Date ? Utilities.formatDate(v, TZ_, 'yyyy-MM-dd') : String(v ?? '').trim().slice(0, 10);
+const dataTxtOk_ = s => /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+function epiCatalogo_() {
+  return tabela_(abaEpi_('CAT')).filter(l => l['Código']).map(l => ({
+    codigo: String(l['Código']).trim(), ativo: ativo_(l['Ativo']), epi: String(l['EPI']), ca: String(l['CA']).replace(/\D/g, ''),
+    validade: dia_(l['Validade CA']), situacao: String(l['Situação CA'] || ''), troca: Number(l['Troca (dias)']) || 0,
+    obs: String(l['Observação'] || ''), conferido: dia_(l['CA conferido em'])
+  }));
+}
+function epiMatriz_() {
+  return tabela_(abaEpi_('MAT')).filter(l => l['Cargo']).map(l => ({
+    cargo: String(l['Cargo']).trim(), codigos: String(l['Códigos'] || '').split(/[,;\s]+/).filter(Boolean), obs: String(l['Observação'] || '')
+  }));
+}
+
+function epiDados_() {
+  const func = cadTabela_().linhas.map(o => ({ matricula: o.matricula, nome: o.nome || '', cargo: o.cargo || '', cpf: o.cpf || '',
+    rg: o.rg || '', admissao: o.admissao || '', demissao: o.demissao || '', setor: o.local || '',
+    calcado: o.tam_calcado || '', luva: o.tam_luva || '', roupa: o.tam_roupa || '' }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const entregas = tabela_(abaEpi_('ENT')).filter(l => l['ID'] && String(l['Situação']) !== 'Excluída').map(l => ({
+    id: String(l['ID']), data: dia_(l['Data']), matricula: mat_(l['Matrícula']).padStart(5, '0'), codigo: String(l['Código']),
+    epi: String(l['EPI']), ca: String(l['CA']).replace(/\D/g, ''), qtd: Number(l['Qtd']) || 1, motivo: String(l['Motivo'] || ''), recibo: String(l['Recibo'] || '')
+  }));
+  const recibos = tabela_(abaEpi_('REC')).filter(l => l['Recibo'] && String(l['Situação']) !== 'Excluído').map(l => ({
+    recibo: String(l['Recibo']), tipo: String(l['Tipo']), data: dia_(l['Data']), matricula: mat_(l['Matrícula']).padStart(5, '0'),
+    nome: String(l['Nome']), itens: Number(l['Itens']) || 0, anexo: !!l['Arquivo'], tipoArquivo: String(l['Tipo do arquivo'] || ''),
+    anexadoEm: texto_(l['Anexado em']), obs: String(l['Observação'] || '')
+  }));
+  return { catalogo: epiCatalogo_(), matriz: epiMatriz_(), funcionarios: func, entregas, recibos };
+}
+
+function epiSalvarCatalogo_(b) {
+  const itens = (b.itens || []).filter(i => /^[A-Z0-9-]{2,20}$/.test(String(i.codigo || '').trim()));
+  const vistos = new Set();
+  itens.forEach(i => { if (vistos.has(i.codigo)) throw new Error('Código repetido: ' + i.codigo); vistos.add(i.codigo); });
+  const sh = abaEpi_('CAT');
+  const linhas = itens.map(i => [i.codigo, i.ativo === false ? 'NÃO' : 'SIM', String(i.epi || '').slice(0, 120),
+    i.ca ? "'" + String(i.ca).replace(/\D/g, '') : '', i.validade && dataTxtOk_(i.validade) ? "'" + i.validade : '',
+    String(i.situacao || '').slice(0, 40), Math.max(0, Math.round(Number(i.troca) || 0)), String(i.obs || '').slice(0, 300),
+    i.conferido && dataTxtOk_(i.conferido) ? "'" + i.conferido : '']);
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, EPI.CAT.length).clearContent();
+  if (linhas.length) sh.getRange(2, 1, linhas.length, EPI.CAT.length).setValues(linhas);
+  return { ok: true, itens: linhas.length };
+}
+
+function epiSalvarMatriz_(b) {
+  const cods = new Set(epiCatalogo_().map(i => i.codigo));
+  const linhas = (b.matriz || []).filter(m => String(m.cargo || '').trim()).map(m => {
+    const c = (m.codigos || []).map(String).filter(x => cods.has(x));
+    return [String(m.cargo).trim().slice(0, 80), c.join(', '), String(m.obs || '').slice(0, 300)];
+  });
+  const sh = abaEpi_('MAT');
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, EPI.MAT.length).clearContent();
+  if (linhas.length) sh.getRange(2, 1, linhas.length, EPI.MAT.length).setValues(linhas);
+  return { ok: true };
+}
+
+function proximoRecibo_(sh, ano, letra) {
+  const pref = (letra || 'R') + '-' + ano + '-';
+  let max = 0;
+  tabela_(sh).forEach(l => { const r = String(l['Recibo']); if (r.indexOf(pref) === 0) max = Math.max(max, Number(r.slice(pref.length)) || 0); });
+  return pref + String(max + 1).padStart(4, '0');
+}
+
+/** Registra uma entrega (um ou mais EPIs para um funcionário) e devolve o número do recibo para imprimir. */
+function epiEntregar_(b) {
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const data = String(b.data || '').trim();
+    if (!dataTxtOk_(data)) throw new Error('Data inválida');
+    const f = cadTabela_().linhas.find(o => mat_(o.matricula) === mat_(b.matricula));
+    if (!f) throw new Error('Funcionário não encontrado no cadastro');
+    const cat = {}; epiCatalogo_().forEach(i => cat[i.codigo] = i);
+    const itens = (b.itens || []).filter(i => cat[i.codigo] && Number(i.qtd) > 0);
+    if (!itens.length) throw new Error('Escolha pelo menos um EPI');
+    const shR = abaEpi_('REC'), shE = abaEpi_('ENT');
+    const recibo = proximoRecibo_(shR, data.slice(0, 4), b.antiga ? 'L' : 'R'), quando = agora_();
+    const linhas = itens.map((i, n) => [recibo + '-' + (n + 1), "'" + data, txt_(f.matricula), f.nome, i.codigo, cat[i.codigo].epi,
+      i.ca ? "'" + String(i.ca).replace(/\D/g, '') : (cat[i.codigo].ca ? "'" + cat[i.codigo].ca : ''),
+      Math.round(Number(i.qtd)), String(i.motivo || 'Entrega').slice(0, 40), recibo, quando, 'Ativa']);
+    shE.getRange(shE.getLastRow() + 1, 1, linhas.length, EPI.ENT.length).setValues(linhas);
+    shR.appendRow([recibo, b.antiga ? 'Lançamento de ficha antiga' : 'Recibo de entrega', "'" + data, txt_(f.matricula), f.nome, linhas.length, '', '', '', String(b.obs || '').slice(0, 300), 'Ativo']);
+    return { ok: true, recibo, itens: linhas.map(l => ({ codigo: l[4], epi: l[5], ca: String(l[6]).replace(/\D/g, ''), qtd: l[7], motivo: l[8] })) };
+  } finally { lock.releaseLock(); }
+}
+
+/** Anexa a foto/PDF do recibo assinado (b.recibo) ou registra uma ficha antiga (sem recibo). */
+function epiAnexar_(b) {
+  const mime = String(b.mime || '');
+  if (!/^(application\/pdf|image\/(jpeg|png|webp))$/.test(mime)) throw new Error('Envie PDF ou foto (JPG/PNG)');
+  if (!b.base64) throw new Error('Arquivo vazio');
+  const ext = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[mime];
+  const pasta = subpasta_('EPI'), sh = abaEpi_('REC');
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    let linha, rec, matTxt, nomeF;
+    if (b.recibo) {
+      const r = tabela_(sh).find(l => String(l['Recibo']) === String(b.recibo));
+      if (!r) throw new Error('Recibo não encontrado');
+      linha = r._linha; rec = String(r['Recibo']); matTxt = mat_(r['Matrícula']).padStart(5, '0'); nomeF = String(r['Nome']);
+      if (r['Arquivo']) { try { DriveApp.getFileById(String(r['Arquivo'])).setTrashed(true); } catch (e) {} }
+    } else {
+      const f = cadTabela_().linhas.find(o => mat_(o.matricula) === mat_(b.matricula));
+      if (!f) throw new Error('Funcionário não encontrado no cadastro');
+      const data = String(b.data || '').trim();
+      if (!dataTxtOk_(data)) throw new Error('Informe a data da ficha');
+      rec = 'F-' + data.slice(0, 4) + '-' + Utilities.getUuid().slice(0, 6).toUpperCase();
+      matTxt = f.matricula; nomeF = f.nome;
+      sh.appendRow([rec, String(b.tipo || 'Ficha anterior').slice(0, 40), "'" + data, txt_(matTxt), nomeF, '', '', '', '', String(b.obs || '').slice(0, 300), 'Ativo']);
+      linha = sh.getLastRow();
+    }
+    const nome = limpa_(rec + ' ' + matTxt + ' ' + nomeF) + '.' + ext;
+    const arq = pasta.createFile(Utilities.newBlob(Utilities.base64Decode(String(b.base64)), mime, nome));
+    sh.getRange(linha, EPI.REC.indexOf('Arquivo') + 1, 1, 3).setValues([[arq.getId(), mime, agora_()]]);
+    return { ok: true, recibo: rec };
+  } finally { lock.releaseLock(); }
+}
+
+function epiAbrirAnexo_(b) {
+  const r = tabela_(abaEpi_('REC')).find(l => String(l['Recibo']) === String(b.recibo));
+  if (!r || !r['Arquivo']) throw new Error('Anexo não encontrado');
+  const blob = DriveApp.getFileById(String(r['Arquivo'])).getBlob();
+  return { nome: blob.getName(), mime: blob.getContentType(), base64: Utilities.base64Encode(blob.getBytes()) };
+}
+
+/** Cancela um recibo lançado por engano (as entregas dele deixam de contar). O anexo vai para a lixeira. */
+function epiExcluirRecibo_(b) {
+  const shR = abaEpi_('REC'), shE = abaEpi_('ENT');
+  const r = tabela_(shR).find(l => String(l['Recibo']) === String(b.recibo));
+  if (!r) throw new Error('Recibo não encontrado');
+  shR.getRange(r._linha, EPI.REC.indexOf('Situação') + 1).setValue('Excluído');
+  if (r['Arquivo']) { try { DriveApp.getFileById(String(r['Arquivo'])).setTrashed(true); } catch (e) {} }
+  const col = EPI.ENT.indexOf('Situação') + 1;
+  tabela_(shE).filter(l => String(l['Recibo']) === String(b.recibo)).forEach(l => shE.getRange(l._linha, col).setValue('Excluída'));
+  return { ok: true };
+}
+
+/** Grava tamanhos (botina, luva, roupa) no cadastro do funcionário. */
+function epiTamanhos_(b) {
+  return cadSalvar_(b.matricula, { tam_calcado: b.calcado || '', tam_luva: b.luva || '', tam_roupa: b.roupa || '' }, 'manual');
+}
+
+// ---------- Conferência automática dos CAs ----------
+// A base pública do CAEPI (Ministério do Trabalho) é baixada toda semana pelo GitHub (caepi/atualizar.py)
+// e publicada em caepi/ca/<grupo>.json no site. Esta função lê de lá a validade e a situação de cada CA do catálogo.
+const CAEPI_URL = 'https://orro-christensen.github.io/documentos/caepi/';
+
+function verificarCAs() {
+  const sh = abaEpi_('CAT'), v = sh.getDataRange().getValues(), cab = v[0].map(String);
+  const iCA = cab.indexOf('CA'), iVal = cab.indexOf('Validade CA'), iSit = cab.indexOf('Situação CA'), iConf = cab.indexOf('CA conferido em'), iEpi = cab.indexOf('EPI');
+  const grupos = {}, hoje = Utilities.formatDate(new Date(), TZ_, 'yyyy-MM-dd'), alertas = [];
+  const busca = ca => {
+    const g = String(Math.floor(Number(ca) / 1000));
+    if (!(g in grupos)) {
+      try { const r = UrlFetchApp.fetch(CAEPI_URL + 'ca/' + g + '.json?t=' + Date.now(), { muteHttpExceptions: true });
+        grupos[g] = r.getResponseCode() === 200 ? JSON.parse(r.getContentText()) : {}; } catch (e) { grupos[g] = {}; }
+    }
+    return grupos[g][String(Number(ca))];
+  };
+  let n = 0;
+  for (let i = 1; i < v.length; i++) {
+    const ca = String(v[i][iCA]).replace(/\D/g, '');
+    if (!ca) continue;
+    const r = busca(ca);
+    const val = r ? isoDeBR_(r[0]) : '', sit = r ? (r[1] || '') : 'CA não encontrado';
+    sh.getRange(i + 1, iVal + 1).setValue(val ? "'" + val : '');
+    sh.getRange(i + 1, iSit + 1).setValue(sit);
+    sh.getRange(i + 1, iConf + 1).setValue("'" + hoje);
+    n++;
+    if (!r || (val && val < hoje) || (sit && !/V[AÁ]LIDO/i.test(sit))) alertas.push(v[i][iEpi] + ' — CA ' + ca + ': ' + (val ? 'validade ' + val.split('-').reverse().join('/') + ', ' : '') + sit);
+  }
+  if (alertas.length) avisarDono_('Documentos O&C: CA de EPI com problema', 'Confira no catálogo de EPI:\n\n' + alertas.join('\n'));
+  Logger.log('CAs conferidos: ' + n + (alertas.length ? ' | alertas: ' + alertas.length : ''));
+  return { ok: true, conferidos: n, alertas };
+}
+function isoDeBR_(s) { const m = String(s || '').match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? m[3] + '-' + m[2] + '-' + m[1] : (String(s || '').match(/^\d{4}-\d{2}-\d{2}/) || [''])[0]; }
+
+/** Liga a conferência semanal dos CAs (toda segunda, entre 9h e 10h). Rodar uma vez. */
+function instalarConferenciaCA() {
+  ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'verificarCAs').forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('verificarCAs').timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9).create();
+  Logger.log('Conferência semanal dos CAs ligada.');
 }

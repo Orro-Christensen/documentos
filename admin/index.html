@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="../img/icone-admin-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Docs Admin">
-<link rel="stylesheet" href="../estilo.css?v=7">
+<link rel="stylesheet" href="../estilo.css?v=8">
 </head>
 <body>
 <div class="marca"><img src="../img/logo.png" alt="Orro &amp; Christensen"></div>
@@ -28,13 +28,14 @@
 <script src="../comum.js?v=5"></script>
 <script src="../irpf.js?v=1"></script>
 <script src="../ficha.js?v=1"></script>
+<script src="epi.js?v=1" defer></script>
 <script>
 const { post, esc, competencia, dataBR, base64DeBytes, pdfjs, aviso } = App;
 const $ = s => document.querySelector(s);
 const tela = $('#tela');
 let token = null, dados = null, aba = 'enviar', consultaAdm = null;
 
-$('#btnSair').onclick = () => { token = null; dados = null; lotes = []; cad = null; cadImp = null; telaPin(); };
+$('#btnSair').onclick = () => { token = null; dados = null; lotes = []; cad = null; cadImp = null; epi = null; telaPin(); };
 const fechar = () => $('#modal').innerHTML = '';
 // Instalar a administração como app (ícone próprio "DOCS ADMIN", separado do app dos funcionários)
 const mostrarInstalar = () => { $('#btnInstalar').hidden = !App.instalacao.podeMostrar(); };
@@ -110,10 +111,11 @@ function desenhar() {
       <button data-a="avisos" class="${aba === 'avisos' ? 'on' : ''}">📢 Avisos</button>
       <button data-a="ir" class="${aba === 'ir' ? 'on' : ''}">📊 Imposto de Renda</button>
       <button data-a="cad" class="${aba === 'cad' ? 'on' : ''}">👷 Funcionários</button>
+      <button data-a="epi" class="${aba === 'epi' ? 'on' : ''}">🦺 EPI</button>
       <button data-a="enviados" class="${aba === 'enviados' ? 'on' : ''}">📋 Enviados e vistos</button></div>
     <div id="conteudo"></div>`;
   tela.querySelectorAll('.abas button').forEach(b => b.onclick = () => { aba = b.dataset.a; desenhar(); });
-  if (aba === 'enviar') telaEnviar(); else if (aba === 'avisos') telaAvisos(); else if (aba === 'ir') telaIR(); else if (aba === 'cad') telaCad(); else telaEnviados();
+  if (aba === 'enviar') telaEnviar(); else if (aba === 'avisos') telaAvisos(); else if (aba === 'ir') telaIR(); else if (aba === 'cad') telaCad(); else if (aba === 'epi') telaEpi(); else telaEnviados();
 }
 
 // ---------- leitura do PDF da contabilidade ----------
