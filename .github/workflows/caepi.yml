@@ -1,0 +1,24 @@
+name: Atualizar base de CA (CAEPI)
+on:
+  schedule:
+    - cron: '17 11 * * 1'   # toda segunda, 08h17 de Brasília
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  caepi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - run: python caepi/atualizar.py
+      - name: Publicar
+        run: |
+          git config user.name "Atualizador CAEPI"
+          git config user.email "actions@users.noreply.github.com"
+          git add caepi
+          git diff --cached --quiet || git commit -m "CAEPI: base de CA atualizada"
+          git push
