@@ -1,7 +1,7 @@
 """Baixa a base pública do CAEPI (Ministério do Trabalho) e publica um resumo por CA.
 
 Saída: caepi/ca/<grupo>.json, com grupo = número do CA // 1000.
-Cada arquivo: {"<CA>": ["validade dd/mm/aaaa", "situação", "equipamento", "fabricante"]}.
+Cada arquivo: {"<CA>": ["validade dd/mm/aaaa", "situação", "equipamento", "fabricante", "marca"]}.
 Também grava caepi/info.json com a data da atualização.
 """
 import csv, gzip, zlib, io, json, os, re, sys, tarfile, zipfile, datetime, collections
@@ -61,7 +61,8 @@ def main():
     iVal = coluna(cab, 'DATA_VALIDADE', 'VALIDADE')
     iSit = coluna(cab, 'SITUACAO', 'SITUAÇÃO')
     iEq = coluna(cab, 'EQUIPAMENTO', 'NOME_EQUIPAMENTO')
-    iFab = coluna(cab, 'RAZAO_SOCIAL', 'RAZÃO SOCIAL', 'FABRICANTE')
+    iFab = coluna(cab, 'RAZAO SOCIAL', 'RAZAO_SOCIAL', 'RAZÃO SOCIAL', 'FABRICANTE')
+    iMarca = coluna(cab, 'MARCA')
     print('colunas:', iCA, iVal, iSit, iEq, iFab)
     if iCA is None or iVal is None:
         sys.exit('Não encontrei as colunas de CA e validade.')
@@ -75,7 +76,8 @@ def main():
         val = l[iVal].strip()[:10]
         reg = [val, l[iSit].strip() if iSit is not None else '',
                (l[iEq].strip() if iEq is not None else '')[:80],
-               (l[iFab].strip() if iFab is not None else '')[:60]]
+               (l[iFab].strip() if iFab is not None else '')[:60],
+               (l[iMarca].strip() if iMarca is not None else '')[:40]]
         g = grupos[str(int(ca) // 1000)]
         ant = g.get(str(int(ca)))
         if ant is None or data_(val) >= data_(ant[0]):
