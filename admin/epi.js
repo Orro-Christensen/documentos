@@ -6,8 +6,8 @@
 const EMPRESA = {
   nome: 'Orro & Christensen Business Ltda.',
   cnpj: '71.446.207/0001-32',
-  endereco: 'Rua Colômbia, 876, Sala 34, Guilhermina, Praia Grande/SP',
-  cidade: 'Praia Grande'
+  endereco: 'Rua Alessandro Rangel Lima, 967 - Galpão Marcenaria, Cibratel, Itanhaém/SP - CEP 11751-310',
+  cidade: 'Itanhaém'
 };
 const CAEPI = new URL('../caepi/', location.href).href;
 const MOTIVOS = ['Entrega inicial', 'Troca periódica', 'Troca por desgaste', 'Perda', 'Dano', 'Outro'];
