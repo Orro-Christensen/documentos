@@ -539,6 +539,37 @@ async function carregarCad() {
   $('#conteudo').innerHTML = '<div class="carregando">Carregando cadastro…</div>';
   cad = (await chamar({ action: 'cadLista' })).funcionarios;
 }
+// ---------- Senhas dos funcionários (a planilha guarda só um código; aqui só se redefine) ----------
+async function telaSenhas() {
+  $('#modal').innerHTML = `<div class="fundo-modal" id="fm"><div class="modal largo"><div class="titulo" style="margin-top:0">🔑 Senhas dos funcionários</div>
+    <div id="snCorpo" class="carregando">Carregando…</div><div class="acoes"><button class="btn btn-claro" id="snX">Fechar</button></div></div></div>`;
+  $('#snX').onclick = fechar; $('#fm').onclick = e => { if (e.target.id === 'fm') fechar(); };
+  try {
+    const { lista } = await chamar({ action: 'adminSenhas' });
+    const cor = { 'própria': 'ok', 'provisória': 'alerta', 'provisória (texto na planilha)': 'erro', 'sem senha': 'erro' };
+    $('#snCorpo').className = '';
+    $('#snCorpo').innerHTML = `<p class="meta">As senhas não ficam visíveis em lugar nenhum. Se alguém esqueceu, toque em <b>Redefinir</b>: o sistema gera uma senha provisória
+      (mostrada só uma vez) e a pessoa é obrigada a criar a dela no próximo acesso ao Documentos. Vale também para o Pede Aí.</p>
+      <div class="tabela-rolagem"><table class="tab-cad"><tbody>${lista.map(f => `<tr>
+        <td><b>${esc(f.nome)}</b>${f.bloqueado ? '<div class="meta" style="color:var(--perigo)">bloqueado por senhas erradas</div>' : ''}</td>
+        <td><span class="epi-selo ${cor[f.situacao] || 'nao'}">${esc(f.situacao)}</span></td>
+        <td style="text-align:right"><button class="mini" data-red="${esc(f.nome)}">Redefinir</button></td></tr>`).join('')}</tbody></table></div>`;
+    $('#snCorpo').querySelectorAll('[data-red]').forEach(b => b.onclick = async () => {
+      const nome = b.dataset.red;
+      if (!confirm(`Redefinir a senha de ${nome}? A senha atual deixa de valer agora, no Documentos e no Pede Aí.`)) return;
+      b.disabled = true;
+      try {
+        const r = await chamar({ action: 'adminRedefinirSenha', nome });
+        $('#snCorpo').innerHTML = `<div style="text-align:center;padding:10px 0"><p>Senha provisória de <b>${esc(r.nome)}</b>:</p>
+          <div style="font-size:44px;font-weight:800;letter-spacing:10px;margin:10px 0">${esc(r.pin)}</div>
+          <p class="meta">Anote e entregue ao funcionário. Ela não aparece de novo. No primeiro acesso ao Documentos ele cria a senha dele.</p>
+          <button class="btn btn-ok" id="snVoltar">OK, já anotei</button></div>`;
+        $('#snVoltar').onclick = telaSenhas;
+      } catch (e) { aviso(e.message); b.disabled = false; }
+    });
+  } catch (e) { $('#snCorpo').className = ''; $('#snCorpo').innerHTML = `<p class="vazio-msg">${esc(e.message)}</p>`; }
+}
+
 async function telaCad() {
   try { if (!cad) await carregarCad(); } catch (e) { $('#conteudo').innerHTML = `<div class="vazio-msg">${esc(e.message)}</div>`; return; }
   if (cadVista.v === 'ver' || cadVista.v === 'editar' || cadVista.v === 'novo') return telaCadFicha();
@@ -551,7 +582,7 @@ async function telaCad() {
   c.innerHTML = `<div class="cartao">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <input id="cadBusca" placeholder="🔎 Buscar por nome, cargo, matrícula ou cidade" value="${esc(cadVista.busca)}" style="flex:1;min-width:220px">
-        <button class="mini" id="cadNovo">➕ Novo funcionário</button><button class="mini" id="cadImp">⬆ Importar fichas (PDF)</button></div>
+        <button class="mini" id="cadNovo">➕ Novo funcionário</button><button class="mini" id="cadImp">⬆ Importar fichas (PDF)</button><button class="mini" id="cadSenhas">🔑 Senhas</button></div>
       ${desl ? `<label class="meta" style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="cadDesl" style="width:auto" ${cadVista.desligados ? 'checked' : ''}> Mostrar desligados (${desl})</label>` : ''}
     </div>
     ${cad.length ? `<div class="cartao tabela-rolagem"><table class="tab-cad">
@@ -568,6 +599,7 @@ async function telaCad() {
   c.querySelectorAll('tr[data-m]').forEach(tr => tr.onclick = () => { cadVista = Object.assign(cadVista, { v: 'ver', m: tr.dataset.m, alt: null }); telaCad(); });
   $('#cadNovo').onclick = () => { cadVista = Object.assign(cadVista, { v: 'novo', m: null }); telaCad(); };
   $('#cadImp').onclick = () => { cadVista.v = 'importar'; cadImp = null; telaCad(); };
+  $('#cadSenhas').onclick = telaSenhas;
 }
 
 function telaCadFicha() {

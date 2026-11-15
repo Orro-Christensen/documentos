@@ -74,11 +74,16 @@ Planilha de controle: abas **EPI_Catalogo**, **EPI_Matriz**, **EPI_Entregas** e 
 
 Na administração, aba **📢 Avisos**: título, texto, anexo opcional (PDF ou foto; foto é reduzida automaticamente) e para quem: **todos** ou funcionários escolhidos. O aviso aparece no topo do app com o selo **NOVO**. Em "Ver quem leu" aparece quem já abriu e quem ainda não. **🗑 Excluir** apaga o aviso de vez (some do app dos funcionários e da administração; o anexo vai para a lixeira do Drive).
 
-## 4. Troca de senha pelo funcionário
+## 4. Senhas dos funcionários
 
-- **Primeiro acesso:** depois de digitar a senha recebida, o funcionário cai na tela "🔐 Primeiro acesso: crie sua senha" e só vê documentos e avisos depois de criar uma senha só dele (4 números, sem 1234, 0000, 1212 etc.). A senha nova vale também no Pede Aí.
-- O app guarda só um resumo (hash) da senha criada. Se a empresa **zerar ou mudar a senha na planilha do Pede Aí** (por exemplo, quando alguém esqueceu), o funcionário será obrigado a criar outra no próximo acesso.
-- Depois disso, ele pode trocar quando quiser no botão **🔑 Quero trocar minha senha**.
+- **A planilha não guarda mais a senha.** A coluna Senha (aba Funcionarios do Pede Aí) tem só um código `h:…`, calculado com uma chave secreta. Nem quem abre a planilha (auditoria, por exemplo) consegue descobrir os 4 números. A chave fica no arquivo "Documentos O&C - chave de senhas (não apagar)", na pasta privada do Drive, e nas Propriedades dos dois scripts. **Não apague esse arquivo.**
+- A coluna Senha está **protegida**: só o dono da planilha edita.
+- **Esqueceu a senha?** Administração > 👷 Funcionários > **🔑 Senhas** > **Redefinir**. O sistema gera uma senha provisória, mostra uma única vez, e a pessoa é obrigada a criar a dela no próximo acesso ao Documentos. A mesma tela mostra quem já tem senha própria e quem está com provisória.
+- **Primeiro acesso:** com senha provisória, o funcionário cai na tela "🔐 Primeiro acesso: crie sua senha" e só vê documentos e avisos depois de criar a senha dele (4 números, sem 1234, 0000, 1212 etc.). A senha vale também no Pede Aí.
+- 4 números digitados direto na coluna Senha ainda funcionam como senha provisória (obrigam a troca), mas ficam visíveis até a pessoa trocar. Prefira o botão Redefinir.
+- **Mudou o nome de alguém na planilha?** O código depende do nome: redefina a senha dessa pessoa.
+- Depois disso, o funcionário pode trocar quando quiser no botão **🔑 Quero trocar minha senha**.
+- Manutenção: `protegerSenhas` (script do Documentos) converte senhas em texto para código e protege a coluna; `lerChaveSenhas` (script do Pede Aí) carrega a chave.
 
 ## 4b. Atalho para o Pede Aí
 

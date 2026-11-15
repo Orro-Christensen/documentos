@@ -165,6 +165,8 @@ function doPost(e) {
       case 'adminArquivarAviso': sessaoAdmin_(b.token); return json_(adminArquivarAviso_(b));
       case 'adminExcluirAviso': sessaoAdmin_(b.token); return json_(adminExcluirAviso_(b));
       case 'adminLiberar': sessaoAdmin_(b.token); liberar_(b.nome); return json_({ ok: true });
+      case 'adminSenhas':  sessaoAdmin_(b.token); return json_({ lista: adminSenhas_() });
+      case 'adminRedefinirSenha': sessaoAdmin_(b.token); return json_(adminRedefinirSenha_(b));
       case 'cadLista':     sessaoAdmin_(b.token); return json_(cadLista_());
       case 'cadVer':       sessaoAdmin_(b.token); return json_(cadVer_(b));
       case 'cadSalvar':    sessaoAdmin_(b.token); return json_(cadSalvar_(b.matricula, b.dados, 'manual', b.novo));
@@ -196,10 +198,8 @@ function conferirSenha_(nome, senha) {
   const p = props_(), c = cache_();
   if (p.getProperty('bloq_' + nome)) throw new Error('Acesso bloqueado por excesso de senhas erradas. Fale com o responsável para liberar.');
   if (c.get('pausa_' + nome)) throw new Error('Muitas senhas erradas. Aguarde 15 minutos.');
-  let certa = f.senha;
-  if (/^\d{1,4}$/.test(certa)) certa = certa.padStart(4, '0');
-  if (!certa) throw new Error('Você ainda não tem senha. Fale com o responsável.');
-  if (String(senha || '').trim() !== certa) {
+  if (!f.senha) throw new Error('Você ainda não tem senha. Fale com o responsável.');
+  if (!senhaConfere_(nome, f.senha, senha)) {
     const falhas = Number(p.getProperty('falhas_' + nome) || 0) + 1;
     p.setProperty('falhas_' + nome, String(falhas));
     if (falhas >= FALHAS_BLOQUEIO) {
@@ -221,11 +221,11 @@ function conferirSenha_(nome, senha) {
 
 function login_(b) {
   const nome = String(b.nome || '').trim();
-  conferirSenha_(nome, b.senha);
+  const f = conferirSenha_(nome, b.senha);
   const token = Utilities.getUuid();
   cache_().put('tf_' + token, nome, SESSAO_FUNC_SEG);
-  // Primeiro acesso (ou senha trocada/zerada pela empresa na planilha): só entra depois de criar a própria senha.
-  if (precisaTrocar_(nome, String(b.senha || '').trim())) {
+  // Primeiro acesso (ou senha provisória/redefinida pela empresa): só entra depois de criar a própria senha.
+  if (precisaTrocar_(f, String(b.senha || '').trim())) {
     cache_().put('tfx_' + token, '1', SESSAO_FUNC_SEG);
     return { token, nome, trocarObrigatorio: true };
   }
@@ -237,7 +237,94 @@ function login_(b) {
 function hashSenha_(nome, senha) {
   return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'O&C|' + nome + '|' + senha, Utilities.Charset.UTF_8));
 }
-function precisaTrocar_(nome, senha) { return props_().getProperty('senhaok_' + nome) !== hashSenha_(nome, senha); }
+// Senha "provisória" = 4 números digitados na planilha ou senha redefinida pela administração: obriga a troca.
+// Senha própria = código h:… gravado quando o próprio funcionário criou a senha (marca senhaok_ = esse código).
+function precisaTrocar_(f, senha) {
+  const ok = props_().getProperty('senhaok_' + f.nome);
+  if (!/^h:/.test(f.senha)) return true;
+  return ok !== f.senha;
+}
+
+// ---------- Senhas protegidas: a planilha guarda só um código (h:…), nunca os 4 números ----------
+// O código é um HMAC-SHA256 com uma chave secreta guardada num arquivo da pasta privada (e nas Propriedades
+// do script). O Pede Aí lê o mesmo arquivo para conferir as senhas. Sem a chave, não dá para descobrir a senha.
+const ARQ_CHAVE_SENHAS = 'Documentos O&C - chave de senhas (não apagar)';
+function chaveSenhas_() {
+  const p = props_();
+  let k = p.getProperty('CHAVE_SENHAS');
+  if (k) return k;
+  const it = DriveApp.getFilesByName(ARQ_CHAVE_SENHAS);
+  if (it.hasNext()) k = it.next().getBlob().getDataAsString().trim();
+  else {
+    k = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+    pasta_().createFile(ARQ_CHAVE_SENHAS, k, MimeType.PLAIN_TEXT);
+  }
+  p.setProperty('CHAVE_SENHAS', k);
+  return k;
+}
+function hashPin_(nome, pin) {
+  return 'h:' + Utilities.base64Encode(Utilities.computeHmacSha256Signature('O&C|' + String(nome).trim() + '|' + String(pin).trim(), chaveSenhas_()));
+}
+/** Confere a senha digitada com o que está na planilha (código h:… ou 4 números provisórios). */
+function senhaConfere_(nome, guardada, digitada) {
+  guardada = String(guardada || '').trim(); digitada = String(digitada || '').trim();
+  if (/^h:/.test(guardada)) return hashPin_(nome, digitada) === guardada;
+  if (/^\d{1,4}$/.test(guardada)) return digitada === guardada.padStart(4, '0');
+  return false;
+}
+function colunaSenha_() {
+  const sh = SpreadsheetApp.openById(PLANILHA_PEDEAI_ID).getSheetByName('Funcionarios');
+  const col = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String).indexOf('Senha') + 1;
+  if (!col) throw new Error('Coluna Senha não encontrada no Pede Aí');
+  return { sh, col };
+}
+function pinAleatorio_() {
+  let p;
+  do { p = String(Math.floor(Math.random() * 10000)).padStart(4, '0'); } while (senhaFraca_(p));
+  return p;
+}
+
+/** Administração: situação da senha de cada funcionário (nunca mostra a senha). */
+function adminSenhas_() {
+  const p = props_();
+  return funcionariosPedeAi_().map(f => ({
+    nome: f.nome,
+    situacao: !f.senha ? 'sem senha' : !/^h:/.test(f.senha) ? 'provisória (texto na planilha)' : p.getProperty('senhaok_' + f.nome) === f.senha ? 'própria' : 'provisória',
+    bloqueado: !!p.getProperty('bloq_' + f.nome)
+  })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+/** Administração: gera uma senha provisória, grava só o código e devolve os 4 números UMA vez para passar ao funcionário. */
+function adminRedefinirSenha_(b) {
+  const f = funcionariosPedeAi_().find(x => x.nome === String(b.nome || '').trim());
+  if (!f) throw new Error('Funcionário não encontrado');
+  const pin = pinAleatorio_(), { sh, col } = colunaSenha_();
+  sh.getRange(f.linha, col).setValue(hashPin_(f.nome, pin));
+  props_().deleteProperty('senhaok_' + f.nome);
+  liberar_(f.nome);
+  return { ok: true, nome: f.nome, pin };
+}
+
+/** Rodar UMA vez: troca todas as senhas em texto da planilha pelo código protegido e protege a coluna Senha
+ *  (só o dono edita). Quem já tinha criado a própria senha continua com ela, sem precisar trocar. */
+function protegerSenhas() {
+  const { sh, col } = colunaSenha_(), p = props_();
+  const v = sh.getDataRange().getValues(), cab = v[0].map(String), iNome = cab.indexOf('Nome');
+  let n = 0;
+  for (let i = 1; i < v.length; i++) {
+    const nome = String(v[i][iNome] || '').trim(), s0 = String(v[i][col - 1] ?? '').trim();
+    if (!nome || !/^\d{1,4}$/.test(s0)) continue;
+    const pin = s0.padStart(4, '0'), h = hashPin_(nome, pin);
+    if (p.getProperty('senhaok_' + nome) === hashSenha_(nome, pin)) p.setProperty('senhaok_' + nome, h);   // já era senha própria
+    sh.getRange(i + 1, col).setValue(h);
+    n++;
+  }
+  const faixa = sh.getRange(1, col, sh.getMaxRows(), 1);
+  sh.getProtections(SpreadsheetApp.ProtectionType.RANGE).filter(x => x.getDescription() === 'Senhas (só o dono)').forEach(x => x.remove());
+  const prot = faixa.protect().setDescription('Senhas (só o dono)');
+  prot.removeEditors(prot.getEditors());
+  if (prot.canDomainEdit()) prot.setDomainEdit(false);
+  Logger.log('Senhas protegidas: ' + n + ' convertidas. Coluna Senha protegida (só o dono edita).');
+}
 
 function senhaFraca_(s) {
   if (/^(\d)\1{3}$/.test(s)) return true;                                   // 0000, 1111...
@@ -255,11 +342,9 @@ function trocarSenha_(b) {
   if (!/^\d{4}$/.test(nova)) throw new Error('A senha nova precisa ter 4 números.');
   if (senhaFraca_(nova)) throw new Error('Senha muito fácil (sequência ou números repetidos). Escolha outra.');
   if (nova === String(b.atual || '').trim()) throw new Error('A senha nova é igual à atual.');
-  const sh = SpreadsheetApp.openById(PLANILHA_PEDEAI_ID).getSheetByName('Funcionarios');
-  const col = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].indexOf('Senha') + 1;
-  if (!col) throw new Error('Coluna Senha não encontrada no Pede Aí');
-  sh.getRange(f.linha, col).setValue(txt_(nova));
-  props_().setProperty('senhaok_' + nome, hashSenha_(nome, nova));
+  const { sh, col } = colunaSenha_(), h = hashPin_(nome, nova);
+  sh.getRange(f.linha, col).setValue(h);
+  props_().setProperty('senhaok_' + nome, h);
   cache_().remove('tfx_' + b.token);
   return { ok: true, docs: meusDocs_(nome), avisos: meusAvisos_(nome) };
 }
