@@ -224,8 +224,20 @@ function login_(b) {
   conferirSenha_(nome, b.senha);
   const token = Utilities.getUuid();
   cache_().put('tf_' + token, nome, SESSAO_FUNC_SEG);
+  // Primeiro acesso (ou senha trocada/zerada pela empresa na planilha): só entra depois de criar a própria senha.
+  if (precisaTrocar_(nome, String(b.senha || '').trim())) {
+    cache_().put('tfx_' + token, '1', SESSAO_FUNC_SEG);
+    return { token, nome, trocarObrigatorio: true };
+  }
   return { token, nome, docs: meusDocs_(nome), avisos: meusAvisos_(nome) };
 }
+
+// A empresa sabe que o funcionário criou a própria senha guardando um resumo (hash) dela.
+// Se a senha da planilha não bate com o resumo (nunca trocou, ou alguém zerou/alterou na planilha), pede a troca.
+function hashSenha_(nome, senha) {
+  return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'O&C|' + nome + '|' + senha, Utilities.Charset.UTF_8));
+}
+function precisaTrocar_(nome, senha) { return props_().getProperty('senhaok_' + nome) !== hashSenha_(nome, senha); }
 
 function senhaFraca_(s) {
   if (/^(\d)\1{3}$/.test(s)) return true;                                   // 0000, 1111...
@@ -237,7 +249,7 @@ function senhaFraca_(s) {
 
 /** O funcionário troca a própria senha (vale para o Pede Aí também). */
 function trocarSenha_(b) {
-  const nome = sessaoFunc_(b.token);
+  const nome = sessaoFunc_(b.token, true);
   const f = conferirSenha_(nome, b.atual);
   const nova = String(b.nova || '').trim();
   if (!/^\d{4}$/.test(nova)) throw new Error('A senha nova precisa ter 4 números.');
@@ -247,13 +259,17 @@ function trocarSenha_(b) {
   const col = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].indexOf('Senha') + 1;
   if (!col) throw new Error('Coluna Senha não encontrada no Pede Aí');
   sh.getRange(f.linha, col).setValue(txt_(nova));
-  return { ok: true };
+  props_().setProperty('senhaok_' + nome, hashSenha_(nome, nova));
+  cache_().remove('tfx_' + b.token);
+  return { ok: true, docs: meusDocs_(nome), avisos: meusAvisos_(nome) };
 }
 
-function sessaoFunc_(token) {
+function sessaoFunc_(token, podeSemTrocar) {
   const nome = token && cache_().get('tf_' + token);
   if (!nome) throw new Error('SESSAO|Sessão expirada. Entre de novo.');
+  if (!podeSemTrocar && cache_().get('tfx_' + token)) throw new Error('SESSAO|Crie sua senha pessoal antes de continuar. Entre de novo.');
   cache_().put('tf_' + token, nome, SESSAO_FUNC_SEG);
+  if (cache_().get('tfx_' + token)) cache_().put('tfx_' + token, '1', SESSAO_FUNC_SEG);
   return nome;
 }
 function matsDe_(nome) { return new Set(matriculas_().filter(m => m.funcionario === nome).map(m => m.matricula)); }

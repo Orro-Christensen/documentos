@@ -12,7 +12,7 @@
 <link rel="icon" href="img/favicon.png">
 <link rel="apple-touch-icon" href="img/icone-180.png">
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="estilo.css?v=7">
+<link rel="stylesheet" href="estilo.css?v=9">
 </head>
 <body>
 <div class="marca"><img src="img/logo.png" alt="Orro &amp; Christensen"></div>
@@ -24,7 +24,7 @@
 <main id="tela"><div class="carregando">Carregando…</div></main>
 <div id="modal"></div>
 
-<script src="config.js?v=4"></script>
+<script src="config.js?v=5"></script>
 <script src="lib/pdf.min.js"></script>
 <script src="comum.js?v=5"></script>
 <script>
@@ -63,8 +63,9 @@ function mexeu() { clearTimeout(inativo); if (sessao) inativo = setTimeout(() =>
 function erroSessao(e) { if (e.sessao) { sair(e.message); return true; } return false; }
 
 function desenhar() {
-  const v = sessao ? estado.v : (estado.v === 'senha' ? 'senha' : 'quem');
-  $('#btnVoltar').hidden = !['senha', 'ver', 'aviso', 'trocar'].includes(v);
+  let v = sessao ? estado.v : (estado.v === 'senha' ? 'senha' : 'quem');
+  if (sessao && sessao.obrigatorio) v = 'trocar';     // primeiro acesso: só sai daqui depois de criar a senha
+  $('#btnVoltar').hidden = !['senha', 'ver', 'aviso', 'trocar'].includes(v) || !!(sessao && sessao.obrigatorio);
   $('#btnSair').hidden = !sessao;
   $('#titulo').textContent = sessao ? sessao.nome : 'Documentos O&C';
   if (v === 'quem') return telaQuem();
@@ -111,8 +112,9 @@ function telaSenha(nome) {
       ocupado = true; $('#msg').textContent = 'Conferindo…';
       try {
         const r = await post({ action: 'login', nome, senha: pin });
-        sessao = { token: r.token, nome: r.nome, docs: r.docs, avisos: r.avisos || [] }; mexeu();
-        ir({ v: 'lista' }, true);
+        sessao = { token: r.token, nome: r.nome, docs: r.docs || [], avisos: r.avisos || [] }; mexeu();
+        if (r.trocarObrigatorio) { sessao.obrigatorio = true; sessao.senhaAtual = pin; ir({ v: 'trocar' }, true); }
+        else ir({ v: 'lista' }, true);
       } catch (e) {
         pin = ''; pontos(); ocupado = false;
         $('#msg').innerHTML = `<span style="color:var(--perigo)">${esc(e.message)}</span>`;
@@ -168,7 +170,8 @@ async function telaLista() {
     h += `<div class="titulo">📊 Imposto de Renda</div>${informes.slice().sort((a, b) => b.competencia.localeCompare(a.competencia)).map(botaoDoc).join('')}`;
   }
   if (!h) h = '<div class="vazio-msg" style="margin-top:20px">Você ainda não tem documentos nem avisos aqui.</div>';
-  tela.innerHTML = h + `${botaoInstalar()}<button class="btn-senha" id="btnTrocar">🔑 Quero trocar minha senha</button>
+  tela.innerHTML = h + `${window.PEDEAI_URL ? `<a class="btn-pedeai" href="${esc(window.PEDEAI_URL)}" target="_blank" rel="noopener">🛒 Abrir o Pede Aí<span>pedido de material, durante o expediente</span></a>` : ''}
+    ${botaoInstalar()}<button class="btn-senha" id="btnTrocar">🔑 Quero trocar minha senha</button>
     <p class="rodape">Toque no item para abrir. Por segurança, o app sai sozinho depois de 10 minutos parado.</p>`;
   tela.querySelectorAll('[data-id]').forEach(b => b.onclick = () => ir({ v: 'ver', id: b.dataset.id }));
   tela.querySelectorAll('[data-av]').forEach(b => b.onclick = () => ir({ v: 'aviso', id: b.dataset.av }));
@@ -210,11 +213,13 @@ async function telaAviso(id) {
 
 // ---------- trocar senha ----------
 function telaTrocar() {
+  const obrig = !!sessao.obrigatorio;
   tela.innerHTML = `<div class="senha-caixa" style="max-width:380px">
-    <div class="titulo" style="text-align:center">🔑 Trocar minha senha</div>
+    <div class="titulo" style="text-align:center">${obrig ? '🔐 Primeiro acesso: crie sua senha' : '🔑 Trocar minha senha'}</div>
+    ${obrig ? '<p style="text-align:center">Antes de ver seus documentos, troque a senha que você recebeu por uma senha só sua. Não conte para ninguém.</p>' : ''}
     <p class="meta" style="text-align:center">A senha nova vale aqui e no Pede Aí. Use 4 números fáceis para você e difíceis para os outros (nada de 1234, 0000 ou ano de nascimento).</p>
     <form id="fs" autocomplete="off">
-      <label class="campo">Senha atual</label><input id="sAtual" class="campo-senha" type="password" inputmode="numeric" maxlength="4" pattern="\\d{4}" required>
+      ${obrig ? '' : '<label class="campo">Senha atual</label><input id="sAtual" class="campo-senha" type="password" inputmode="numeric" maxlength="4" pattern="\\d{4}" required>'}
       <label class="campo">Senha nova</label><input id="sNova" class="campo-senha" type="password" inputmode="numeric" maxlength="4" pattern="\\d{4}" required>
       <label class="campo">Repita a senha nova</label><input id="sNova2" class="campo-senha" type="password" inputmode="numeric" maxlength="4" pattern="\\d{4}" required>
       <div class="acoes"><button class="btn btn-ok" id="sOk">Trocar senha</button></div>
@@ -222,14 +227,18 @@ function telaTrocar() {
     </form></div>`;
   $('#fs').onsubmit = async e => {
     e.preventDefault();
-    const atual = $('#sAtual').value.trim(), nova = $('#sNova').value.trim();
+    const atual = obrig ? sessao.senhaAtual : $('#sAtual').value.trim(), nova = $('#sNova').value.trim();
     if (!/^\d{4}$/.test(nova)) return $('#sMsg').textContent = 'A senha nova precisa ter 4 números.';
     if (nova !== $('#sNova2').value.trim()) return $('#sMsg').textContent = 'As duas senhas novas não são iguais.';
     $('#sOk').disabled = true; $('#sMsg').textContent = '';
     try {
-      await post({ action: 'trocarSenha', token: sessao.token, atual, nova });
+      const r = await post({ action: 'trocarSenha', token: sessao.token, atual, nova });
       aviso('Senha trocada! Use a nova aqui e no Pede Aí.');
-      history.back();
+      if (obrig) {
+        delete sessao.obrigatorio; delete sessao.senhaAtual;
+        sessao.docs = r.docs || []; sessao.avisos = r.avisos || [];
+        ir({ v: 'lista' }, true);
+      } else history.back();
     } catch (err) {
       if (erroSessao(err)) return;
       $('#sMsg').textContent = err.message; $('#sOk').disabled = false;

@@ -76,7 +76,13 @@ Na administração, aba **📢 Avisos**: título, texto, anexo opcional (PDF ou 
 
 ## 4. Troca de senha pelo funcionário
 
-No app, depois de entrar: **🔑 Quero trocar minha senha** → senha atual + nova (2 vezes). A nova é gravada na aba Funcionarios do Pede Aí e vale nos dois apps. Senhas fáceis (1234, 0000, 1212…) são recusadas.
+- **Primeiro acesso:** depois de digitar a senha recebida, o funcionário cai na tela "🔐 Primeiro acesso: crie sua senha" e só vê documentos e avisos depois de criar uma senha só dele (4 números, sem 1234, 0000, 1212 etc.). A senha nova vale também no Pede Aí.
+- O app guarda só um resumo (hash) da senha criada. Se a empresa **zerar ou mudar a senha na planilha do Pede Aí** (por exemplo, quando alguém esqueceu), o funcionário será obrigado a criar outra no próximo acesso.
+- Depois disso, ele pode trocar quando quiser no botão **🔑 Quero trocar minha senha**.
+
+## 4b. Atalho para o Pede Aí
+
+Na tela de documentos há o botão **🛒 Abrir o Pede Aí** (endereço em `config.js`, `PEDEAI_URL`). É só um link: nenhum dado passa de um app para o outro e o Pede Aí continua pedindo a senha. O texto do botão lembra que pedido de material é durante o expediente.
 
 ## 5. Acompanhamento
 
