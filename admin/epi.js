@@ -401,7 +401,7 @@ async function pdfBase() {
     });
     return yy - 38;
   };
-  const tabela = (pg, y, cols, linhas, { alt = 18, cab = true } = {}) => {
+  const tabela = (pg, y, cols, linhas, { alt = 18, cab = true, direita = [] } = {}) => {
     const tot = cols.reduce((s, c) => s + c[1], 0); let x0 = 40;
     if (cab) {
       pg.drawRectangle({ x: x0, y: y - alt + 5, width: tot, height: alt, color: fundo });
@@ -414,7 +414,7 @@ async function pdfBase() {
         pg.drawRectangle({ x, y: y - alt + 5, width: w, height: alt, borderColor: linha, borderWidth: 0.6 });
         const v = String(l[i] ?? ''); let t = 9;
         while (t > 6 && F.widthOfTextAtSize(v, t) > w - 8) t -= 0.5;
-        pg.drawText(v, { x: x + 4, y: y - 8, size: t, font: F });
+        pg.drawText(v, { x: direita.includes(i) ? x + w - 4 - F.widthOfTextAtSize(v, t) : x + 4, y: y - 8, size: t, font: F });
         x += w;
       });
       y -= alt;

@@ -28,14 +28,15 @@
 <script src="../comum.js?v=5"></script>
 <script src="../irpf.js?v=1"></script>
 <script src="../ficha.js?v=1"></script>
-<script src="epi.js?v=2" defer></script>
+<script src="epi.js?v=3" defer></script>
+<script src="pagamento.js?v=1" defer></script>
 <script>
 const { post, esc, competencia, dataBR, base64DeBytes, pdfjs, aviso } = App;
 const $ = s => document.querySelector(s);
 const tela = $('#tela');
 let token = null, dados = null, aba = 'enviar', consultaAdm = null;
 
-$('#btnSair').onclick = () => { token = null; dados = null; lotes = []; cad = null; cadImp = null; epi = null; telaPin(); };
+$('#btnSair').onclick = () => { token = null; dados = null; lotes = []; cad = null; cadImp = null; epi = null; pag = { comp: '', tipo: 'Holerite', lido: null }; telaPin(); };
 const fechar = () => $('#modal').innerHTML = '';
 // Instalar a administração como app (ícone próprio "DOCS ADMIN", separado do app dos funcionários)
 const mostrarInstalar = () => { $('#btnInstalar').hidden = !App.instalacao.podeMostrar(); };
@@ -110,12 +111,13 @@ function desenhar() {
       <button data-a="enviar" class="${aba === 'enviar' ? 'on' : ''}">🧾 Holerites</button>
       <button data-a="avisos" class="${aba === 'avisos' ? 'on' : ''}">📢 Avisos</button>
       <button data-a="ir" class="${aba === 'ir' ? 'on' : ''}">📊 Imposto de Renda</button>
+      <button data-a="pag" class="${aba === 'pag' ? 'on' : ''}">💰 Pagamento</button>
       <button data-a="cad" class="${aba === 'cad' ? 'on' : ''}">👷 Funcionários</button>
       <button data-a="epi" class="${aba === 'epi' ? 'on' : ''}">🦺 EPI</button>
       <button data-a="enviados" class="${aba === 'enviados' ? 'on' : ''}">📋 Enviados e vistos</button></div>
     <div id="conteudo"></div>`;
   tela.querySelectorAll('.abas button').forEach(b => b.onclick = () => { aba = b.dataset.a; desenhar(); });
-  if (aba === 'enviar') telaEnviar(); else if (aba === 'avisos') telaAvisos(); else if (aba === 'ir') telaIR(); else if (aba === 'cad') telaCad(); else if (aba === 'epi') telaEpi(); else telaEnviados();
+  if (aba === 'enviar') telaEnviar(); else if (aba === 'avisos') telaAvisos(); else if (aba === 'ir') telaIR(); else if (aba === 'pag') telaPagamento(); else if (aba === 'cad') telaCad(); else if (aba === 'epi') telaEpi(); else telaEnviados();
 }
 
 // ---------- leitura do PDF da contabilidade ----------
@@ -528,10 +530,16 @@ const SECOES = [
   { t: '📄 Documentos', c: [['cpf', 'CPF'], ['rg', 'RG'], ['rg_emissor', 'Órgão emissor'], ['rg_uf', 'UF do RG'], ['rg_emissao', 'Emissão do RG'], ['pis', 'PIS'],
     ['ctps', 'CTPS nº'], ['ctps_serie', 'CTPS série'], ['ctps_uf', 'CTPS UF'], ['ctps_data', 'CTPS emissão'], ['cnh', 'CNH'], ['cnh_categoria', 'CNH categoria'],
     ['cnh_validade', 'CNH validade'], ['titulo', 'Título de eleitor'], ['titulo_zona', 'Zona'], ['titulo_secao', 'Seção'], ['reservista', 'Reservista'], ['matricula_esocial', 'Matrícula eSocial']] },
-  { t: '🏦 Banco (pagamento)', c: [['banco', 'Código do banco'], ['agencia', 'Agência'], ['conta', 'Conta']] },
+  { t: '🏦 Dados bancários (pagamento)', c: [['banco_nome', 'Banco', 2], ['banco', 'Número do banco'], ['agencia', 'Agência'], ['conta', 'Conta corrente'], ['pix', 'Chave PIX', 2]] },
   { t: '🩺 Saúde (para emergência)', c: [['tipo_sanguineo', 'Tipo sanguíneo'], ['alergias', 'Alergias', 2], ['doencas', 'Doenças/condições', 3, 'area']] },
   { t: '📝 Observações', c: [['observacoes', 'Observações', 3, 'area']] }
 ];
+// Número do banco (COMPE) → nome, para preencher o nome do banco sozinho.
+const BANCOS = { '001': 'Banco do Brasil', '033': 'Santander', '041': 'Banrisul', '070': 'BRB', '077': 'Banco Inter', '104': 'Caixa Econômica Federal',
+  '136': 'Unicred', '197': 'Stone', '208': 'BTG Pactual', '212': 'Banco Original', '237': 'Bradesco', '260': 'Nubank', '290': 'PagBank (PagSeguro)',
+  '323': 'Mercado Pago', '336': 'C6 Bank', '341': 'Itaú Unibanco', '380': 'PicPay', '389': 'Mercantil do Brasil', '422': 'Safra', '655': 'Votorantim (BV)',
+  '748': 'Sicredi', '756': 'Sicoob', '403': 'Cora', '623': 'Banco Pan', '746': 'Modal', '021': 'Banestes', '047': 'Banese', '004': 'Banco do Nordeste', '037': 'Banpará' };
+const nomeBanco = n => BANCOS[String(n || '').replace(/\D/g, '').padStart(3, '0')] || '';
 const ROTULO = {}; SECOES.forEach(s => s.c.forEach(c => ROTULO[c[0]] = c[1])); ROTULO.cadastro = 'Cadastro';
 let cad = null, cadVista = { v: 'lista', busca: '', desligados: false }, cadImp = null;
 
@@ -607,7 +615,7 @@ function telaCadFicha() {
   const novo = cadVista.v === 'novo', editar = novo || cadVista.v === 'editar';
   const f = novo ? {} : cad.find(x => x.matricula === cadVista.m);
   if (!f) { cadVista.v = 'lista'; return telaCad(); }
-  const val = k => f[k] || '';
+  const val = k => f[k] || (k === 'banco_nome' ? nomeBanco(f.banco) : '');
   const celula = ([k, rot, larg, tipo]) => `<div class="cad-campo" style="grid-column:span ${larg || 1}"><label>${esc(rot)}</label>${editar
       ? (tipo === 'area' ? `<textarea data-k="${k}" rows="3">${esc(val(k))}</textarea>` : `<input data-k="${k}" value="${esc(val(k))}">`)
       : `<div class="cad-valor${tipo === 'area' ? ' area' : ''}">${val(k) ? esc(tipo === 'area' ? val(k).split(' | ').join('\n') : val(k)) : '<span class="nao">—</span>'}</div>`}</div>`;
@@ -624,6 +632,8 @@ function telaCadFicha() {
     <div id="cadPdfVisor"></div>`;
   $('#cadVoltar').onclick = () => { if (editar && !confirm('Sair sem salvar?')) return; cadVista.v = 'lista'; telaCad(); };
   if (editar) {
+    const nb = c.querySelector('[data-k="banco"]'), nn = c.querySelector('[data-k="banco_nome"]');
+    nb.onchange = () => { const n = nomeBanco(nb.value); if (n && (!nn.value.trim() || Object.values(BANCOS).includes(nn.value.trim()))) nn.value = n; };
     $('#cadCancelar').onclick = () => { cadVista.v = novo ? 'lista' : 'ver'; telaCad(); };
     $('#cadSalvar').onclick = async () => {
       const dados = {};

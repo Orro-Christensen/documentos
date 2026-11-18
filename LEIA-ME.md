@@ -49,9 +49,17 @@ Enviou errado? Mandar o mesmo mês e tipo de novo **substitui** o arquivo daquel
 
 Aba **📊 Imposto de Renda** → escolha o PDF do "Comprovante de Rendimentos Pagos e de IRRF" que a contabilidade manda (todos os funcionários num arquivo só). O site separa as páginas de cada pessoa (comprovante + complemento), liga ao funcionário pelo nome completo dos holerites e mostra o total de rendimentos para conferência. Ex-funcionários ficam em laranja e não são enviados. O funcionário vê, na seção **📊 Imposto de Renda** do app, um resumo com o que vai na declaração (fonte pagadora, CNPJ e os valores de cada quadro) e o PDF completo.
 
+## 2b2. Relação de pagamento (para o financeiro)
+
+Aba **💰 Pagamento**: escolha a **competência** e o **tipo** (Holerite ou Adiantamento). Se aquele mês já foi enviado aos funcionários, toque em **📥 Usar o PDF já enviado** (o original fica guardado na pasta privada); se ainda não, **📄 Escolher o PDF da contabilidade** (não precisa enviar antes). O site lê o **valor líquido** de cada página, junta com os **dados bancários** do cadastro (banco, agência, conta corrente e chave PIX) e mostra a lista com o total.
+
+- Linha em laranja = valor líquido não encontrado no PDF: digite o valor. Dá para corrigir qualquer valor e desmarcar quem não entra (o contra-cheque não muda).
+- Funcionário sem banco/PIX no cadastro aparece com aviso; complete em 👷 Funcionários > ✏️ Editar > Dados bancários.
+- Informe a data do pagamento e uma observação (opcional) e toque em **🖨️ Gerar PDF da relação**: sai a lista numerada com banco, agência, conta, PIX, valor líquido, total e espaço para assinatura de quem conferiu e de quem autorizou.
+
 ## 2c. Cadastro de funcionários (só na administração)
 
-Aba **👷 Funcionários**: lista com busca (nome, cargo, matrícula, cidade). Tocando no nome abre a ficha por seções (identificação, contato, contrato, documentos, banco, saúde, observações), com **✏️ Editar**, **📄 Ficha completa (PDF)** e o **histórico de alterações** (quem mudou o quê e quando). **⬆ Importar fichas (PDF)** lê a "Ficha de Registro de Empregado" da contabilidade; importar de novo só atualiza o que veio preenchido no PDF e não apaga o que foi digitado à mão. **➕ Novo funcionário** cadastra manualmente. Os dados ficam nas abas **Cadastro** e **Alteracoes** da planilha de controle (privada) e a ficha em PDF na subpasta **Fichas**. Nada disso aparece no app dos funcionários.
+Aba **👷 Funcionários**: lista com busca (nome, cargo, matrícula, cidade). Tocando no nome abre a ficha por seções (identificação, contato, contrato, documentos, dados bancários, saúde, observações), com **✏️ Editar**, **📄 Ficha completa (PDF)** e o **histórico de alterações** (quem mudou o quê e quando). **⬆ Importar fichas (PDF)** lê a "Ficha de Registro de Empregado" da contabilidade; importar de novo só atualiza o que veio preenchido no PDF e não apaga o que foi digitado à mão. **➕ Novo funcionário** cadastra manualmente. Os dados ficam nas abas **Cadastro** e **Alteracoes** da planilha de controle (privada) e a ficha em PDF na subpasta **Fichas**. Nada disso aparece no app dos funcionários.
 
 ## 2d. EPI (só na administração)
 
@@ -118,6 +126,7 @@ Atalhos para planilhas, pasta, script e repositório: botão **🛠️ Administr
 |---|---|
 | `index.html` | App dos funcionários |
 | `admin/index.html` | Administração (envio e acompanhamento) |
+| `admin/pagamento.js` | Relação de pagamento (valor líquido + dados bancários, PDF para o financeiro) |
 | `config.js` | URL do Apps Script e link do app (público) |
 | `comum.js`, `estilo.css` | Funções e visual compartilhados |
 | `lib/` | pdf.js (ler/mostrar PDF) e pdf-lib (separar páginas), cópias locais |

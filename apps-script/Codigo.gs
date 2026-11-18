@@ -167,6 +167,7 @@ function doPost(e) {
       case 'adminLiberar': sessaoAdmin_(b.token); liberar_(b.nome); return json_({ ok: true });
       case 'adminSenhas':  sessaoAdmin_(b.token); return json_({ lista: adminSenhas_() });
       case 'adminRedefinirSenha': sessaoAdmin_(b.token); return json_(adminRedefinirSenha_(b));
+      case 'relOriginal':  sessaoAdmin_(b.token); return json_(relOriginal_(b));
       case 'cadLista':     sessaoAdmin_(b.token); return json_(cadLista_());
       case 'cadVer':       sessaoAdmin_(b.token); return json_(cadVer_(b));
       case 'cadSalvar':    sessaoAdmin_(b.token); return json_(cadSalvar_(b.matricula, b.dados, 'manual', b.novo));
@@ -546,6 +547,20 @@ function adminOriginal_(b) {
   while (it.hasNext()) it.next().setTrashed(true);
   pasta.createFile(Utilities.newBlob(bytes, 'application/pdf', nome));
   return { ok: true };
+}
+
+/** Relação de pagamento: devolve o PDF original da contabilidade (guardado no envio) de uma competência e tipo,
+ *  para o navegador ler os valores líquidos. Se houver mais de um, vai o mais recente. */
+function relOriginal_(b) {
+  const comp = String(b.competencia || ''), tipo = limpa_(b.tipo);
+  if (!/^\d{4}-\d{2}$/.test(comp)) throw new Error('Competência inválida');
+  const it = pasta_().getFoldersByName(comp);
+  if (!it.hasNext()) throw new Error('Nenhum documento enviado em ' + comp);
+  const ini = comp + ' ' + tipo + ' - original - ', arqs = [], fs = it.next().getFiles();
+  while (fs.hasNext()) { const f = fs.next(); if (f.getName().indexOf(ini) === 0) arqs.push(f); }
+  if (!arqs.length) throw new Error('Não achei o PDF original de ' + tipo + ' ' + comp + ' na pasta privada. Escolha o arquivo da contabilidade.');
+  arqs.sort((x, y) => y.getDateCreated() - x.getDateCreated());
+  return { nomeArquivo: arqs[0].getName().slice(ini.length), base64: Utilities.base64Encode(arqs[0].getBlob().getBytes()) };
 }
 
 function adminExcluir_(b) {
